@@ -1,0 +1,10 @@
+# SFT (Supervised Fine-Tuning) task defaults
+
+task: sft
+
+training:
+  packing: false  # Set true for long-context training efficiency
+  dataset_num_proc: 4
+
+dataset:
+  output_format: json  # json or text

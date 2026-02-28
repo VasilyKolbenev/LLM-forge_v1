@@ -1,0 +1,28 @@
+# Mistral 7B Instruct v0.3 — strong 7B model
+# Requires 12GB+ VRAM for QLoRA, 24GB+ for LoRA
+
+model:
+  name: unsloth/mistral-7b-instruct-v0.3-bnb-4bit
+  name_full: mistralai/Mistral-7B-Instruct-v0.3
+  family: mistral
+  max_seq_length: 32768
+  chat_template: mistral
+
+lora:
+  r: 32
+  lora_alpha: 32
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  lora_dropout: 0
+  bias: none
+  use_gradient_checkpointing: unsloth
+
+training:
+  batch_size: 1
+  gradient_accumulation: 16

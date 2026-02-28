@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project outputs
+outputs/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+
+# Data
+data/
+*.csv
+*.jsonl
+*.parquet
+
+# Logs
+*.log
+wandb/
+runs/
+
+# Secrets
+.env
+*.key
+
+# Claude Code
+.claude/

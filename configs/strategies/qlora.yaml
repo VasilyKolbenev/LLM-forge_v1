@@ -1,0 +1,15 @@
+# QLoRA strategy — 4-bit quantized base + LoRA adapters
+# Optimal for single GPU with 8-12 GB VRAM
+
+strategy: qlora
+use_unsloth: true
+load_in_4bit: true
+
+training:
+  bf16: true
+  optimizer: adamw_8bit
+
+lora:
+  r: 16
+  lora_alpha: 16
+  lora_dropout: 0

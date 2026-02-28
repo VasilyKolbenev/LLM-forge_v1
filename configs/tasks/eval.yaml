@@ -1,0 +1,8 @@
+# Evaluation task defaults
+
+task: eval
+
+evaluation:
+  batch_size: 8
+  max_new_tokens: 128
+  temperature: 0.0

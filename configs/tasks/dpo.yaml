@@ -1,0 +1,13 @@
+# DPO (Direct Preference Optimization) task defaults
+
+task: dpo
+
+dpo:
+  beta: 0.1
+  max_length: 512
+  max_prompt_length: 384
+
+training:
+  epochs: 2
+  learning_rate: 5e-5
+  gradient_accumulation: 8

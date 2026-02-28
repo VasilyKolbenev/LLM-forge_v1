@@ -1,0 +1,24 @@
+# Qwen 2.5 3B Instruct — good balance of quality and speed
+# Works well on 8GB+ VRAM with QLoRA
+
+model:
+  name: unsloth/Qwen2.5-3B-Instruct-bnb-4bit
+  name_full: Qwen/Qwen2.5-3B-Instruct
+  family: qwen2
+  max_seq_length: 32768
+  chat_template: chatml  # <|im_start|>...<|im_end|>
+
+lora:
+  r: 16
+  lora_alpha: 16
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  lora_dropout: 0
+  bias: none
+  use_gradient_checkpointing: unsloth

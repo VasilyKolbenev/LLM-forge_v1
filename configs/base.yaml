@@ -1,0 +1,28 @@
+# Base configuration — shared defaults for all experiments
+# Override individual settings in experiment configs
+
+training:
+  epochs: 3
+  learning_rate: 2e-4
+  batch_size: 1
+  gradient_accumulation: 16
+  warmup_steps: 10
+  max_seq_length: 512
+  logging_steps: 20
+  seed: 42
+  optimizer: adamw_8bit
+
+strategy: auto  # auto-detect hardware
+
+dataset:
+  format: auto  # auto-detect from file extension
+  text_column: text
+  test_size: 0.15
+
+output:
+  dir: ./outputs
+  save_adapter: true
+
+logging:
+  level: INFO
+  report_to: none

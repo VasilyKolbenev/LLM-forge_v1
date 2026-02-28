@@ -1,0 +1,18 @@
+# FSDP Full Finetune strategy — multi-GPU full parameter training
+# For 8+ GPUs with high VRAM
+
+strategy: fsdp_full
+use_unsloth: false
+load_in_4bit: false
+
+training:
+  bf16: true
+  optimizer: adamw_torch
+  learning_rate: 5e-5  # Lower LR for full finetune
+
+fsdp:
+  sharding_strategy: FULL_SHARD
+  cpu_offload: true
+  backward_prefetch: BACKWARD_PRE
+  auto_wrap_policy: transformer_based_wrap
+  sync_module_states: true

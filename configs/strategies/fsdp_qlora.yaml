@@ -1,0 +1,21 @@
+# FSDP + QLoRA strategy — multi-GPU with 4-bit quantization
+# For 2-4 GPUs
+
+strategy: fsdp_qlora
+use_unsloth: false
+load_in_4bit: true
+
+training:
+  bf16: true
+  optimizer: adamw_8bit
+
+fsdp:
+  sharding_strategy: FULL_SHARD
+  cpu_offload: false
+  backward_prefetch: BACKWARD_PRE
+  auto_wrap_policy: transformer_based_wrap
+
+lora:
+  r: 32
+  lora_alpha: 32
+  lora_dropout: 0

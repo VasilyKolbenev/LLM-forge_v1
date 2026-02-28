@@ -1,0 +1,15 @@
+# LoRA strategy — bf16 base + LoRA adapters
+# For single GPU with 20+ GB VRAM
+
+strategy: lora
+use_unsloth: true
+load_in_4bit: false
+
+training:
+  bf16: true
+  optimizer: adamw_torch
+
+lora:
+  r: 64
+  lora_alpha: 64
+  lora_dropout: 0.05
