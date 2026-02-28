@@ -5,12 +5,27 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_STEP_HANDLERS: dict[str, Any] = {}
+
+
+def register_step(name: str):
+    """Decorator to register a step handler.
+
+    Args:
+        name: Step type name.
+    """
+    def wrapper(func):
+        _STEP_HANDLERS[name] = func
+        return func
+    return wrapper
+
 
 def dispatch_step(step_type: str, config: dict) -> dict[str, Any]:
     """Dispatch a pipeline step to the appropriate handler.
 
     Args:
-        step_type: Step type (training, evaluation, export).
+        step_type: Step type (training, evaluation, export, register,
+                   fingerprint, serve, conditional).
         config: Resolved step config.
 
     Returns:
@@ -19,14 +34,21 @@ def dispatch_step(step_type: str, config: dict) -> dict[str, Any]:
     Raises:
         ValueError: If step type is unknown.
     """
-    if step_type == "training":
-        return _run_training_step(config)
-    elif step_type == "evaluation":
-        return _run_evaluation_step(config)
-    elif step_type == "export":
-        return _run_export_step(config)
-    else:
-        raise ValueError(f"Unknown step type: {step_type}")
+    handler = _STEP_HANDLERS.get(step_type)
+    if handler:
+        return handler(config)
+
+    builtin = {
+        "training": _run_training_step,
+        "evaluation": _run_evaluation_step,
+        "export": _run_export_step,
+        "register": _run_register_step,
+        "fingerprint": _run_fingerprint_step,
+    }
+    if step_type in builtin:
+        return builtin[step_type](config)
+
+    raise ValueError(f"Unknown step type: {step_type}")
 
 
 def _run_training_step(config: dict) -> dict[str, Any]:
@@ -90,3 +112,108 @@ def _run_export_step(config: dict) -> dict[str, Any]:
         return push_to_hub(config)
     else:
         raise ValueError(f"Unknown export format: {fmt}")
+
+
+def _run_register_step(config: dict) -> dict[str, Any]:
+    """Register a model in the registry as a pipeline step.
+
+    Args:
+        config: Config with name, model_path, task, base_model.
+
+    Returns:
+        Registered model entry dict.
+    """
+    from llm_forge.registry import ModelRegistry
+
+    reg = ModelRegistry()
+    entry = reg.register(
+        name=config.get("name", "pipeline-model"),
+        model_path=config.get("model_path", ""),
+        task=config.get("task", "sft"),
+        base_model=config.get("model", {}).get("name", ""),
+        dataset_fingerprint=config.get("_dataset_fingerprint", ""),
+    )
+    logger.info("Registered model: %s", entry["id"])
+    return {"model_id": entry["id"], "model_path": entry["model_path"]}
+
+
+def _run_fingerprint_step(config: dict) -> dict[str, Any]:
+    """Compute dataset fingerprint as a pipeline step.
+
+    Args:
+        config: Config with dataset.path.
+
+    Returns:
+        Dict with fingerprint hash.
+    """
+    from llm_forge.tracking import fingerprint_dataset
+
+    path = config.get("dataset", {}).get("path", "")
+    if not path:
+        return {"fingerprint": "", "error": "No dataset path"}
+
+    fp = fingerprint_dataset(path)
+    return {"fingerprint": fp, "dataset_path": path}
+
+
+def check_condition(condition: dict, step_outputs: dict) -> bool:
+    """Evaluate a conditional expression against step outputs.
+
+    Supports: gt, gte, lt, lte, eq, neq operators.
+
+    Args:
+        condition: Dict with 'metric' (${step.key}), 'operator', 'value'.
+        step_outputs: Dict of step_name → output_dict.
+
+    Returns:
+        True if condition is met.
+
+    Example:
+        condition = {
+            "metric": "${eval.accuracy}",
+            "operator": "gte",
+            "value": 0.85,
+        }
+    """
+    import re
+
+    metric_ref = condition.get("metric", "")
+    operator = condition.get("operator", "gte")
+    threshold = condition.get("value", 0)
+
+    # Resolve ${step.key} reference
+    match = re.match(r"\$\{(\w+)\.(\w+)\}", metric_ref)
+    if not match:
+        logger.warning("Invalid metric reference: %s", metric_ref)
+        return False
+
+    step_name, key = match.group(1), match.group(2)
+    if step_name not in step_outputs:
+        logger.warning("Step '%s' not found in outputs", step_name)
+        return False
+
+    actual = step_outputs[step_name].get(key)
+    if actual is None:
+        logger.warning("Key '%s' not found in step '%s' outputs", key, step_name)
+        return False
+
+    ops = {
+        "gt": lambda a, b: a > b,
+        "gte": lambda a, b: a >= b,
+        "lt": lambda a, b: a < b,
+        "lte": lambda a, b: a <= b,
+        "eq": lambda a, b: a == b,
+        "neq": lambda a, b: a != b,
+    }
+
+    op_func = ops.get(operator)
+    if not op_func:
+        logger.warning("Unknown operator: %s", operator)
+        return False
+
+    result = op_func(float(actual), float(threshold))
+    logger.info(
+        "Condition: %s.%s (%s) %s %s → %s",
+        step_name, key, actual, operator, threshold, result,
+    )
+    return result

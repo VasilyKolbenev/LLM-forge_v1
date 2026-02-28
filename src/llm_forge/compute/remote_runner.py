@@ -2,6 +2,7 @@
 
 import json
 import logging
+import tempfile
 import uuid
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -45,6 +46,26 @@ class RemoteJobRunner:
     def __init__(self, target: ComputeTarget) -> None:
         self.target = target
         self._conn: SSHConnection | None = None
+
+    def _write_remote_json(
+        self, conn: SSHConnection, data: dict, remote_path: str
+    ) -> None:
+        """Write JSON to a remote file via SFTP (no shell injection risk).
+
+        Args:
+            conn: Active SSH connection.
+            data: Dictionary to serialize as JSON.
+            remote_path: Destination path on the remote host.
+        """
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as tmp:
+            json.dump(data, tmp, indent=2)
+            tmp_path = Path(tmp.name)
+        try:
+            conn.put_file(tmp_path, remote_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     def _get_connection(self) -> SSHConnection:
         """Get or create SSH connection."""
@@ -93,11 +114,8 @@ class RemoteJobRunner:
         remote_job_dir = f"{self.REMOTE_WORK_DIR}/{job_id}"
         conn.exec_command(f"mkdir -p {remote_job_dir}")
 
-        # Write config to remote
-        config_json = json.dumps(config, indent=2)
-        conn.exec_command(
-            f"cat > {remote_job_dir}/config.json << 'FORGEEOF'\n{config_json}\nFORGEEOF"
-        )
+        # Write config to remote via SFTP (safe from shell injection)
+        self._write_remote_json(conn, config, f"{remote_job_dir}/config.json")
 
         # Build training command
         num_gpus = self.target.gpu_count or 1
@@ -134,10 +152,7 @@ class RemoteJobRunner:
             "started_at": datetime.now().isoformat(),
             "remote_dir": remote_job_dir,
         }
-        meta_json = json.dumps(meta, indent=2)
-        conn.exec_command(
-            f"cat > {remote_job_dir}/job_meta.json << 'FORGEEOF'\n{meta_json}\nFORGEEOF"
-        )
+        self._write_remote_json(conn, meta, f"{remote_job_dir}/job_meta.json")
 
         logger.info(
             "Submitted remote job %s on %s (PID: %s)",

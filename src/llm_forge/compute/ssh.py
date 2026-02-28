@@ -40,7 +40,11 @@ class SSHConnection:
             import paramiko
 
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Load known hosts for MITM protection
+            known_hosts = Path.home() / ".ssh" / "known_hosts"
+            if known_hosts.exists():
+                client.load_host_keys(str(known_hosts))
+            client.set_missing_host_key_policy(paramiko.WarningPolicy())
 
             connect_kwargs: dict = {
                 "hostname": self.host,
@@ -78,7 +82,7 @@ class SSHConnection:
             return stdout.read().decode(), stderr.read().decode(), exit_code
 
         # Fallback to subprocess
-        ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-p", str(self.port)]
+        ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=accept-new", "-p", str(self.port)]
         if self.key_path:
             ssh_cmd.extend(["-i", self.key_path])
         ssh_cmd.append(f"{self.user}@{self.host}")
@@ -102,7 +106,7 @@ class SSHConnection:
             sftp.close()
             return
 
-        scp_cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-P", str(self.port)]
+        scp_cmd = ["scp", "-o", "StrictHostKeyChecking=accept-new", "-P", str(self.port)]
         if self.key_path:
             scp_cmd.extend(["-i", self.key_path])
         scp_cmd.extend([str(local), f"{self.user}@{self.host}:{remote}"])
@@ -121,7 +125,7 @@ class SSHConnection:
             sftp.close()
             return
 
-        scp_cmd = ["scp", "-o", "StrictHostKeyChecking=no", "-P", str(self.port)]
+        scp_cmd = ["scp", "-o", "StrictHostKeyChecking=accept-new", "-P", str(self.port)]
         if self.key_path:
             scp_cmd.extend(["-i", self.key_path])
         scp_cmd.extend([f"{self.user}@{self.host}:{remote}", str(local)])

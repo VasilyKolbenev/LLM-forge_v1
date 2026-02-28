@@ -19,6 +19,7 @@ export function TrainingNode({ data }: NodeProps) {
       {config.task ? <div>Task: {String(config.task).toUpperCase()}</div> : null}
       {config.lr ? <div>LR: {String(config.lr)}</div> : null}
       {config.epochs ? <div>Epochs: {String(config.epochs)}</div> : null}
+      {config.lora_r ? <div>LoRA r: {String(config.lora_r)}</div> : null}
     </BaseNode>
   )
 }

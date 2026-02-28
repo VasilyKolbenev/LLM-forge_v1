@@ -1,0 +1,14 @@
+services:
+  forge:
+    build: .
+    ports:
+      - "${FORGE_PORT:-8888}:8888"
+    volumes:
+      - forge_data:/app/data
+    environment:
+      - FORGE_CORS_ORIGINS=${FORGE_CORS_ORIGINS:-http://localhost:8888}
+      - FORGE_AUTH_ENABLED=${FORGE_AUTH_ENABLED:-false}
+    restart: unless-stopped
+
+volumes:
+  forge_data:

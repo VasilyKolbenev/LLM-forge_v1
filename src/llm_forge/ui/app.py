@@ -4,12 +4,18 @@ Serves both the REST API and static React frontend.
 """
 
 import logging
+import os
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from slowapi import Limiter
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
+
+from llm_forge.ui.auth import ApiKeyMiddleware, ApiKeyStore
 from llm_forge.ui.routes import training, datasets, experiments, evaluation
 from llm_forge.ui.routes import export_routes, hardware
 from llm_forge.ui.assistant import router as assistant_router
@@ -17,6 +23,11 @@ from llm_forge.ui.metrics import router as metrics_router
 from llm_forge.ui.routes.compute import router as compute_router
 from llm_forge.ui.routes.workflows import router as workflows_router
 from llm_forge.ui.routes.prompts import router as prompts_router
+from llm_forge.ui.routes.settings import router as settings_router
+from llm_forge.ui.routes.runs import router as runs_router
+from llm_forge.ui.routes.registry import router as registry_router
+from llm_forge.ui.routes.serving import router as serving_router
+from llm_forge.ui.routes.protocols import router as protocols_router
 
 logger = logging.getLogger(__name__)
 
@@ -35,13 +46,37 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    # CORS: configurable via FORGE_CORS_ORIGINS env var (comma-separated)
+    cors_env = os.environ.get("FORGE_CORS_ORIGINS", "")
+    cors_origins = (
+        [o.strip() for o in cors_env.split(",") if o.strip()]
+        if cors_env
+        else ["http://localhost:3000", "http://localhost:8888"]
+    )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Content-Type", "Authorization"],
     )
+
+    # API key authentication (opt-in via FORGE_AUTH_ENABLED=true)
+    auth_enabled = os.environ.get("FORGE_AUTH_ENABLED", "false").lower() == "true"
+    key_store = ApiKeyStore()
+    if auth_enabled:
+        app.add_middleware(ApiKeyMiddleware, key_store=key_store, enabled=True)
+        if not key_store.list_keys():
+            initial_key = key_store.generate_key("default")
+            logger.warning("Auth enabled but no keys found. Generated default key: %s", initial_key)
+    # Store key_store on app state for use by settings routes
+    app.state.key_store = key_store
+    app.state.auth_enabled = auth_enabled
+
+    # Rate limiting
+    limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
 
     # API routes
     app.include_router(training.router, prefix="/api/v1")
@@ -55,6 +90,11 @@ def create_app() -> FastAPI:
     app.include_router(compute_router, prefix="/api/v1")
     app.include_router(workflows_router, prefix="/api/v1")
     app.include_router(prompts_router, prefix="/api/v1")
+    app.include_router(settings_router, prefix="/api/v1")
+    app.include_router(runs_router, prefix="/api/v1")
+    app.include_router(registry_router, prefix="/api/v1")
+    app.include_router(serving_router, prefix="/api/v1")
+    app.include_router(protocols_router)
 
     @app.get("/api/v1/health")
     async def health() -> dict:

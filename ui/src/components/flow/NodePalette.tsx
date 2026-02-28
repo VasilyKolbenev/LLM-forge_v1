@@ -7,6 +7,15 @@ import {
   MessageSquare,
   FileText,
   GitBranch,
+  Search,
+  Zap,
+  Route,
+  Sparkles,
+  Globe,
+  Scissors,
+  Plug,
+  ArrowLeftRight,
+  Network,
 } from "lucide-react"
 import type { DragEvent } from "react"
 
@@ -25,8 +34,17 @@ const PALETTE_ITEMS: PaletteItem[] = [
   { type: "training", label: "Training", icon: FlaskConical, color: "#6d5dfc", group: "Training" },
   { type: "eval", label: "Evaluation", icon: ListChecks, color: "#eab308", group: "Evaluation" },
   { type: "conditional", label: "Condition", icon: GitBranch, color: "#f97316", group: "Evaluation" },
+  { type: "splitter", label: "Splitter", icon: Scissors, color: "#84cc16", group: "Data" },
   { type: "export", label: "Export", icon: Download, color: "#ef4444", group: "Export" },
+  { type: "serve", label: "Serve", icon: Globe, color: "#ec4899", group: "Export" },
   { type: "agent", label: "Agent", icon: MessageSquare, color: "#8b5cf6", group: "Agent" },
+  { type: "rag", label: "RAG", icon: Search, color: "#0ea5e9", group: "Agent" },
+  { type: "router", label: "Router", icon: Route, color: "#f43f5e", group: "Agent" },
+  { type: "inference", label: "Inference", icon: Zap, color: "#a855f7", group: "Agent" },
+  { type: "dataGen", label: "Data Gen", icon: Sparkles, color: "#14b8a6", group: "Agent" },
+  { type: "mcp", label: "MCP", icon: Plug, color: "#7c3aed", group: "Protocols" },
+  { type: "a2a", label: "A2A", icon: ArrowLeftRight, color: "#0891b2", group: "Protocols" },
+  { type: "gateway", label: "Gateway", icon: Network, color: "#d97706", group: "Protocols" },
 ]
 
 function onDragStart(e: DragEvent, nodeType: string, label: string) {

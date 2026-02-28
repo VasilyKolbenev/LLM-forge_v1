@@ -10,12 +10,24 @@ logger = logging.getLogger(__name__)
 def train_dpo(config: dict) -> dict:
     """Run DPO training on top of an SFT model.
 
+    Automatically tracks experiment if logging.tracker is set.
+
     Args:
         config: Fully resolved config dict with DPO settings.
 
     Returns:
         Dict with training results.
     """
+    from llm_forge.tracking import track_experiment, fingerprint_dataset
+
+    # Fingerprint DPO pairs if path available
+    pairs_path = config.get("dpo", {}).get("pairs_path")
+    if pairs_path:
+        try:
+            config["_dataset_fingerprint"] = fingerprint_dataset(pairs_path)
+        except FileNotFoundError:
+            logger.warning("DPO pairs not found for fingerprinting: %s", pairs_path)
+
     import torch
     from trl import DPOTrainer, DPOConfig
     from datasets import Dataset
@@ -30,55 +42,66 @@ def train_dpo(config: dict) -> dict:
             "DPO requires base_model_path or sft_adapter_path in config"
         )
 
-    # Load model with SFT adapter
-    from llm_forge.model_loader import load_model
+    with track_experiment(config, task="dpo") as tracker:
+        # Load model with SFT adapter
+        from llm_forge.model_loader import load_model
 
-    model, tokenizer = load_model(config, sft_adapter, trainable=True)
+        model, tokenizer = load_model(config, sft_adapter, trainable=True)
 
-    # Load DPO dataset
-    dpo_dataset = _load_dpo_dataset(config, tokenizer)
+        # Load DPO dataset
+        dpo_dataset = _load_dpo_dataset(config, tokenizer)
 
-    trainer = DPOTrainer(
-        model=model,
-        ref_model=None,
-        train_dataset=dpo_dataset,
-        processing_class=tokenizer,
-        args=DPOConfig(
-            per_device_train_batch_size=training_config.get("batch_size", 1),
-            gradient_accumulation_steps=training_config.get(
-                "gradient_accumulation", 8
+        trainer = DPOTrainer(
+            model=model,
+            ref_model=None,
+            train_dataset=dpo_dataset,
+            processing_class=tokenizer,
+            args=DPOConfig(
+                per_device_train_batch_size=training_config.get("batch_size", 1),
+                gradient_accumulation_steps=training_config.get(
+                    "gradient_accumulation", 8
+                ),
+                warmup_steps=training_config.get("warmup_steps", 10),
+                num_train_epochs=training_config.get("epochs", 2),
+                learning_rate=training_config.get("learning_rate", 5e-5),
+                bf16=config.get("_hardware", {}).get("bf16_supported", True),
+                logging_steps=training_config.get("logging_steps", 20),
+                optim=training_config.get("optimizer", "adamw_8bit"),
+                output_dir=output_dir,
+                beta=dpo_config.get("beta", 0.1),
+                max_length=dpo_config.get("max_length", 512),
+                max_prompt_length=dpo_config.get("max_prompt_length", 384),
+                seed=training_config.get("seed", 42),
+                report_to=config.get("logging", {}).get("report_to", "none"),
             ),
-            warmup_steps=training_config.get("warmup_steps", 10),
-            num_train_epochs=training_config.get("epochs", 2),
-            learning_rate=training_config.get("learning_rate", 5e-5),
-            bf16=config.get("_hardware", {}).get("bf16_supported", True),
-            logging_steps=training_config.get("logging_steps", 20),
-            optim=training_config.get("optimizer", "adamw_8bit"),
-            output_dir=output_dir,
-            beta=dpo_config.get("beta", 0.1),
-            max_length=dpo_config.get("max_length", 512),
-            max_prompt_length=dpo_config.get("max_prompt_length", 384),
-            seed=training_config.get("seed", 42),
-            report_to=config.get("logging", {}).get("report_to", "none"),
-        ),
-    )
+        )
 
-    logger.info("Starting DPO training...")
-    stats = trainer.train()
+        logger.info("Starting DPO training...")
+        stats = trainer.train()
 
-    adapter_dir = str(Path(output_dir) / "lora")
-    model.save_pretrained(adapter_dir)
-    tokenizer.save_pretrained(adapter_dir)
-    logger.info("DPO adapter saved to %s", adapter_dir)
+        adapter_dir = str(Path(output_dir) / "lora")
+        model.save_pretrained(adapter_dir)
+        tokenizer.save_pretrained(adapter_dir)
+        logger.info("DPO adapter saved to %s", adapter_dir)
 
-    vram_peak = torch.cuda.max_memory_allocated() / (1024**3)
-    return {
-        "training_loss": stats.training_loss,
-        "global_steps": stats.global_step,
-        "vram_peak_gb": round(vram_peak, 2),
-        "output_dir": output_dir,
-        "adapter_dir": adapter_dir,
-    }
+        vram_peak = torch.cuda.max_memory_allocated() / (1024**3)
+        results = {
+            "training_loss": stats.training_loss,
+            "global_steps": stats.global_step,
+            "vram_peak_gb": round(vram_peak, 2),
+            "output_dir": output_dir,
+            "adapter_dir": adapter_dir,
+        }
+
+        tracker.log_metrics({
+            "training_loss": results["training_loss"],
+            "global_steps": results["global_steps"],
+            "vram_peak_gb": results["vram_peak_gb"],
+        })
+        tracker.log_artifact("adapter", adapter_dir)
+        tracker.finish(status="completed", results=results)
+
+    return results
 
 
 def _load_dpo_dataset(config: dict, tokenizer: Any) -> Any:

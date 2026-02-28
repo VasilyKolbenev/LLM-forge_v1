@@ -45,6 +45,7 @@ def train_sft(config: dict) -> dict:
     """Run SFT training based on config.
 
     Auto-selects backend (Unsloth vs HF) based on strategy.
+    Automatically tracks experiment if logging.tracker is set.
 
     Args:
         config: Fully resolved config dict.
@@ -52,14 +53,38 @@ def train_sft(config: dict) -> dict:
     Returns:
         Dict with training results (loss, steps, output_dir).
     """
+    from llm_forge.tracking import track_experiment, fingerprint_dataset
+
+    # Fingerprint dataset if path available
+    ds_path = config.get("dataset", {}).get("path")
+    if ds_path:
+        try:
+            config["_dataset_fingerprint"] = fingerprint_dataset(ds_path)
+        except FileNotFoundError:
+            logger.warning("Dataset not found for fingerprinting: %s", ds_path)
+
     strategy = config.get("_detected_strategy", config.get("strategy", "qlora"))
     use_unsloth = config.get("use_unsloth", strategy in ("qlora", "lora"))
     fsdp = config.get("fsdp_enabled", False)
 
-    if use_unsloth and not fsdp:
-        return _train_sft_unsloth(config)
-    else:
-        return _train_sft_hf(config)
+    with track_experiment(config, task="sft") as tracker:
+        if use_unsloth and not fsdp:
+            results = _train_sft_unsloth(config)
+        else:
+            results = _train_sft_hf(config)
+
+        tracker.log_metrics({
+            "training_loss": results.get("training_loss", 0),
+            "global_steps": results.get("global_steps", 0),
+            "vram_peak_gb": results.get("vram_peak_gb", 0),
+        })
+
+        if results.get("adapter_dir"):
+            tracker.log_artifact("adapter", results["adapter_dir"])
+
+        tracker.finish(status="completed", results=results)
+
+    return results
 
 
 def _train_sft_unsloth(config: dict) -> dict:

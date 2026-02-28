@@ -1,6 +1,8 @@
 """Built-in tools for agents — file system, math, shell."""
 
+import ast
 import logging
+import operator
 import os
 from pathlib import Path
 
@@ -95,8 +97,46 @@ def _list_directory(path: str = ".") -> str:
     return "\n".join(entries)
 
 
+_SAFE_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+    ast.Mod: operator.mod,
+    ast.FloorDiv: operator.floordiv,
+    ast.USub: operator.neg,
+    ast.UAdd: operator.pos,
+}
+
+
+def _safe_eval_node(node: ast.AST) -> float:
+    """Recursively evaluate an AST node for safe math expressions.
+
+    Args:
+        node: AST node to evaluate.
+
+    Returns:
+        Numeric result.
+
+    Raises:
+        ValueError: If the node type is not supported.
+    """
+    if isinstance(node, ast.Expression):
+        return _safe_eval_node(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_OPS:
+        left = _safe_eval_node(node.left)
+        right = _safe_eval_node(node.right)
+        return _SAFE_OPS[type(node.op)](left, right)
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_OPS:
+        return _SAFE_OPS[type(node.op)](_safe_eval_node(node.operand))
+    raise ValueError(f"Unsupported expression: {ast.dump(node)}")
+
+
 def _calculate(expression: str) -> str:
-    """Evaluate a mathematical expression safely.
+    """Evaluate a mathematical expression safely using AST parsing.
 
     Args:
         expression: Mathematical expression to evaluate.
@@ -104,15 +144,11 @@ def _calculate(expression: str) -> str:
     Returns:
         Result as string.
     """
-    # Only allow safe math operations
-    allowed_chars = set("0123456789+-*/.() eE")
-    if not all(c in allowed_chars for c in expression.replace(" ", "")):
-        return f"Error: Expression contains invalid characters: {expression}"
-
     try:
-        result = eval(expression, {"__builtins__": {}}, {})  # noqa: S307
+        tree = ast.parse(expression.strip(), mode="eval")
+        result = _safe_eval_node(tree)
         return str(result)
-    except (SyntaxError, ZeroDivisionError, TypeError) as e:
+    except (SyntaxError, ValueError, ZeroDivisionError, TypeError) as e:
         return f"Error: {e}"
 
 

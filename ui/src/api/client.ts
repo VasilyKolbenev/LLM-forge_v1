@@ -1,8 +1,26 @@
 const BASE = "/api/v1"
 
+let _apiKey: string | null = localStorage.getItem("forge_api_key")
+
+export function setApiKey(key: string | null) {
+  _apiKey = key
+  if (key) localStorage.setItem("forge_api_key", key)
+  else localStorage.removeItem("forge_api_key")
+}
+
+export function getApiKey(): string | null {
+  return _apiKey
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  }
+  if (_apiKey) {
+    headers["Authorization"] = `Bearer ${_apiKey}`
+  }
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options,
   })
   if (!res.ok) {
@@ -98,6 +116,18 @@ export const api = {
     request<Record<string, unknown>>(`/prompts/${id}/diff?v1=${v1}&v2=${v2}`),
   testPrompt: (id: string, data: { variables?: Record<string, string>; version?: number }) =>
     request<Record<string, unknown>>(`/prompts/${id}/test`, { method: "POST", body: JSON.stringify(data) }),
+
+  // Settings
+  getSettings: () =>
+    request<{ version: string; auth_enabled: boolean; cors_origins: string[]; data_dir: string }>("/settings"),
+  listApiKeys: () => request<Array<{ name: string }>>("/settings/keys"),
+  generateApiKey: (name: string) =>
+    request<{ key: string; name: string }>("/settings/keys", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
+  revokeApiKey: (name: string) =>
+    request<{ status: string }>(`/settings/keys/${name}`, { method: "DELETE" }),
 
   // Health
   health: () => request<{ status: string }>("/health"),

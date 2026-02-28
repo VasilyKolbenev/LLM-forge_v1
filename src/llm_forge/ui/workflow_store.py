@@ -197,6 +197,12 @@ class WorkflowStore:
             "agent": "agent",
             "prompt": "prompt",
             "conditional": "conditional",
+            "rag": "rag",
+            "inference": "inference",
+            "router": "router",
+            "dataGen": "data_generation",
+            "serve": "serve",
+            "splitter": "splitter",
         }
         return mapping.get(node_type, node_type)
 

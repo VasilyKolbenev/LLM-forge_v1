@@ -724,6 +724,330 @@ def pipeline_list(name: str | None) -> None:
     console.print(table)
 
 
+# ──────────────────────────────────────────────────────────
+# Experiment tracking & comparison
+# ──────────────────────────────────────────────────────────
+
+@main.group()
+def runs() -> None:
+    """Experiment run tracking: list, compare, show."""
+
+
+@runs.command(name="list")
+@click.option("--project", default=None, help="Filter by project name.")
+@click.option("--status", default=None, help="Filter by status.")
+@click.option("--limit", type=int, default=20, help="Max runs to show.")
+def runs_list(project: str | None, status: str | None, limit: int) -> None:
+    """List tracked experiment runs.
+
+    \b
+    Examples:
+        forge runs list
+        forge runs list --status completed --limit 10
+    """
+    from llm_forge.tracking import list_runs
+
+    results = list_runs(project=project, status=status, limit=limit)
+    if not results:
+        console.print("[dim]No runs found.[/dim]")
+        return
+
+    table = Table(title="Experiment Runs")
+    table.add_column("Run ID", style="cyan")
+    table.add_column("Name")
+    table.add_column("Status")
+    table.add_column("Duration")
+    table.add_column("Loss")
+    table.add_column("Backend", style="dim")
+
+    for run in results:
+        status_val = run.get("status", "?")
+        style = "green" if status_val == "completed" else "red" if status_val == "failed" else "yellow"
+        loss = run.get("results", {}).get("training_loss")
+        loss_str = f"{loss:.4f}" if isinstance(loss, (int, float)) else "—"
+        duration = run.get("duration_s")
+        dur_str = f"{duration:.0f}s" if duration else "—"
+
+        table.add_row(
+            run.get("run_id", "?")[:12],
+            run.get("name", "?")[:30],
+            f"[{style}]{status_val}[/{style}]",
+            dur_str,
+            loss_str,
+            run.get("backend", "?"),
+        )
+
+    console.print(table)
+
+
+@runs.command(name="show")
+@click.argument("run_id")
+def runs_show(run_id: str) -> None:
+    """Show details of a specific run.
+
+    \b
+    Examples:
+        forge runs show abc123def456
+    """
+    from llm_forge.tracking import get_run
+
+    run = get_run(run_id)
+    if not run:
+        console.print(f"[red]Run not found: {run_id}[/red]")
+        sys.exit(1)
+
+    console.print(Panel(
+        f"[bold]{run.get('name', '?')}[/bold]\n"
+        f"Status: {run.get('status')}\n"
+        f"Duration: {run.get('duration_s', 0):.1f}s\n"
+        f"Backend: {run.get('backend')}\n"
+        f"Started: {run.get('started_at', '?')[:19]}",
+        title=f"Run {run_id}",
+    ))
+
+    # Results
+    results = run.get("results", {})
+    if results:
+        table = Table(title="Results")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="green")
+        for k, v in results.items():
+            if isinstance(v, float):
+                table.add_row(k, f"{v:.4f}")
+            elif isinstance(v, (str, int)):
+                table.add_row(k, str(v))
+        console.print(table)
+
+    # Environment
+    env = run.get("environment", {})
+    if env:
+        table = Table(title="Environment")
+        table.add_column("Key", style="cyan")
+        table.add_column("Value", style="dim")
+        for k, v in env.items():
+            if k != "packages":
+                table.add_row(k, str(v)[:60])
+        console.print(table)
+
+
+@runs.command(name="compare")
+@click.argument("run_ids", nargs=-1, required=True)
+def runs_compare(run_ids: tuple[str, ...]) -> None:
+    """Compare experiment runs side by side.
+
+    \b
+    Examples:
+        forge runs compare abc123 def456
+        forge runs compare run1 run2 run3
+    """
+    from llm_forge.tracking import compare_runs
+
+    result = compare_runs(list(run_ids))
+    if "error" in result:
+        console.print(f"[red]{result['error']}[/red]")
+        sys.exit(1)
+
+    # Config differences
+    config_diff = result.get("config_diff", {})
+    if config_diff:
+        table = Table(title="Config Differences")
+        table.add_column("Parameter", style="cyan")
+        for name in result.get("run_names", []):
+            table.add_column(name[:20], style="green")
+
+        for key, values in config_diff.items():
+            if not key.startswith("_"):
+                table.add_row(key, *[str(v)[:20] for v in values])
+        console.print(table)
+
+    # Metrics comparison
+    metrics = result.get("metrics_comparison", {})
+    if metrics:
+        table = Table(title="Metrics Comparison")
+        table.add_column("Metric", style="cyan")
+        for name in result.get("run_names", []):
+            table.add_column(name[:20], style="green")
+
+        for key, values in metrics.items():
+            table.add_row(
+                key,
+                *[f"{v:.4f}" if isinstance(v, float) else str(v) for v in values],
+            )
+        console.print(table)
+
+
+# ──────────────────────────────────────────────────────────
+# HPO sweep
+# ──────────────────────────────────────────────────────────
+
+@main.command()
+@click.argument("config_path", type=click.Path(exists=True))
+@click.argument("sweep_config_path", type=click.Path(exists=True))
+@click.option("--n-trials", type=int, default=None, help="Override number of trials.")
+@click.option("--name", default=None, help="Study name.")
+def sweep(
+    config_path: str,
+    sweep_config_path: str,
+    n_trials: int | None,
+    name: str | None,
+) -> None:
+    """Run hyperparameter optimization sweep.
+
+    \b
+    Examples:
+        forge sweep configs/experiments/sft.yaml configs/sweeps/lr-search.yaml
+        forge sweep configs/experiments/sft.yaml configs/sweeps/full.yaml --n-trials 30
+    """
+    from llm_forge.hpo.sweep import SweepRunner, load_sweep_config
+
+    sweep_config = load_sweep_config(sweep_config_path)
+    sweep_conf = sweep_config.get("hpo", sweep_config)
+
+    console.print(Panel(
+        f"Sweep config: {sweep_config_path}\n"
+        f"Base config: {config_path}\n"
+        f"Trials: {n_trials or sweep_conf.get('n_trials', 10)}\n"
+        f"Metric: {sweep_conf.get('metric', 'training_loss')}\n"
+        f"Direction: {sweep_conf.get('direction', 'minimize')}\n"
+        f"Search space: {len(sweep_conf.get('search_space', {}))} parameters",
+        title="HPO Sweep",
+    ))
+
+    runner = SweepRunner(
+        base_config_path=config_path,
+        sweep_config=sweep_config,
+        study_name=name,
+    )
+
+    results = runner.run(n_trials=n_trials)
+
+    console.print(f"\n[green]Sweep completed![/green]")
+    console.print(f"Best trial: #{results['best_trial']}")
+    console.print(f"Best value: {results['best_value']:.6f}")
+
+    table = Table(title="Best Parameters")
+    table.add_column("Parameter", style="cyan")
+    table.add_column("Value", style="green")
+    for k, v in results["best_params"].items():
+        table.add_row(k, f"{v:.6f}" if isinstance(v, float) else str(v))
+    console.print(table)
+
+
+# ──────────────────────────────────────────────────────────
+# Model registry
+# ──────────────────────────────────────────────────────────
+
+@main.group()
+def registry() -> None:
+    """Model registry: register, list, promote, compare."""
+
+
+@registry.command(name="list")
+@click.option("--name", default=None, help="Filter by model name.")
+@click.option("--status", default=None, help="Filter by status.")
+def registry_list(name: str | None, status: str | None) -> None:
+    """List registered models.
+
+    \b
+    Examples:
+        forge registry list
+        forge registry list --name customer-intent --status production
+    """
+    from llm_forge.registry import ModelRegistry
+
+    reg = ModelRegistry()
+    models = reg.list_models(name=name, status=status)
+
+    if not models:
+        console.print("[dim]No models registered.[/dim]")
+        return
+
+    table = Table(title="Model Registry")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name")
+    table.add_column("Version")
+    table.add_column("Task")
+    table.add_column("Status")
+    table.add_column("Base Model")
+    table.add_column("Created", style="dim")
+
+    for m in models:
+        status_val = m.get("status", "?")
+        style = (
+            "green" if status_val == "production"
+            else "yellow" if status_val == "staging"
+            else "dim"
+        )
+        table.add_row(
+            m["id"],
+            m["name"],
+            str(m["version"]),
+            m.get("task", ""),
+            f"[{style}]{status_val}[/{style}]",
+            m.get("base_model", "")[:25],
+            m.get("created_at", "?")[:10],
+        )
+
+    console.print(table)
+
+
+@registry.command(name="register")
+@click.argument("name")
+@click.option("--model-path", required=True, help="Path to model/adapter.")
+@click.option("--task", default="sft", help="Training task.")
+@click.option("--base-model", default="", help="Base model name.")
+@click.option("--tag", multiple=True, help="Tags (repeatable).")
+def registry_register(
+    name: str,
+    model_path: str,
+    task: str,
+    base_model: str,
+    tag: tuple[str, ...],
+) -> None:
+    """Register a model in the registry.
+
+    \b
+    Examples:
+        forge registry register customer-intent --model-path ./outputs/sft/lora --base-model qwen2.5-3b
+    """
+    from llm_forge.registry import ModelRegistry
+
+    reg = ModelRegistry()
+    entry = reg.register(
+        name=name,
+        model_path=model_path,
+        task=task,
+        base_model=base_model,
+        tags=list(tag),
+    )
+    console.print(
+        f"[green]Registered:[/green] {entry['id']} ({entry['model_path']})"
+    )
+
+
+@registry.command(name="promote")
+@click.argument("model_id")
+@click.argument(
+    "status",
+    type=click.Choice(["staging", "production", "archived"]),
+)
+def registry_promote(model_id: str, status: str) -> None:
+    """Promote a model to a new status.
+
+    \b
+    Examples:
+        forge registry promote customer-intent-v2 production
+    """
+    from llm_forge.registry import ModelRegistry
+
+    reg = ModelRegistry()
+    entry = reg.update_status(model_id, status)
+    if entry:
+        console.print(f"[green]{model_id}[/green] → {status}")
+    else:
+        console.print(f"[red]Model not found: {model_id}[/red]")
+
+
 def _show_config_summary(config: dict, task: str) -> None:
     """Display config summary panel.
 

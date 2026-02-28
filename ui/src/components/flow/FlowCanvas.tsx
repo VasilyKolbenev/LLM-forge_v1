@@ -17,6 +17,15 @@ import { ExportNode } from "./nodes/ExportNode"
 import { AgentNode } from "./nodes/AgentNode"
 import { PromptNode } from "./nodes/PromptNode"
 import { ConditionalNode } from "./nodes/ConditionalNode"
+import { RAGNode } from "./nodes/RAGNode"
+import { InferenceNode } from "./nodes/InferenceNode"
+import { RouterNode } from "./nodes/RouterNode"
+import { DataGenNode } from "./nodes/DataGenNode"
+import { ServeNode } from "./nodes/ServeNode"
+import { SplitterNode } from "./nodes/SplitterNode"
+import { MCPNode } from "./nodes/MCPNode"
+import { A2ANode } from "./nodes/A2ANode"
+import { GatewayNode } from "./nodes/GatewayNode"
 import type { useWorkflow } from "@/hooks/useWorkflow"
 
 const nodeTypes = {
@@ -28,6 +37,15 @@ const nodeTypes = {
   agent: AgentNode,
   prompt: PromptNode,
   conditional: ConditionalNode,
+  rag: RAGNode,
+  inference: InferenceNode,
+  router: RouterNode,
+  dataGen: DataGenNode,
+  serve: ServeNode,
+  splitter: SplitterNode,
+  mcp: MCPNode,
+  a2a: A2ANode,
+  gateway: GatewayNode,
 }
 
 type WorkflowHook = ReturnType<typeof useWorkflow>
@@ -105,6 +123,15 @@ export function FlowCanvas({ workflow }: FlowCanvasProps) {
               agent: "#8b5cf6",
               prompt: "#06b6d4",
               conditional: "#f97316",
+              rag: "#0ea5e9",
+              inference: "#a855f7",
+              router: "#f43f5e",
+              dataGen: "#14b8a6",
+              serve: "#ec4899",
+              splitter: "#84cc16",
+              mcp: "#7c3aed",
+              a2a: "#0891b2",
+              gateway: "#d97706",
             }
             return colors[n.type || ""] || "#6d5dfc"
           }}

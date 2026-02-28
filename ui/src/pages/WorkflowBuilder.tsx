@@ -138,7 +138,12 @@ export function WorkflowBuilder() {
   const [showLoad, setShowLoad] = useState(false)
 
   useEffect(() => {
-    workflow.loadList()
+    workflow.loadList().then((list) => {
+      const items = list as Array<{ id: string }>
+      if (items.length > 0 && workflow.nodes.length === 0) {
+        workflow.load(items[0].id)
+      }
+    })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpenLoad = async () => {

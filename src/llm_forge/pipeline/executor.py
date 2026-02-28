@@ -5,7 +5,7 @@ import re
 import time
 from typing import Any
 
-from llm_forge.pipeline.steps import dispatch_step
+from llm_forge.pipeline.steps import check_condition, dispatch_step
 from llm_forge.pipeline.tracker import PipelineTracker
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,17 @@ class PipelineExecutor:
 
         for step_name in execution_order:
             step = self._get_step(step_name)
+
+            # Check conditional — skip step if condition not met
+            condition = step.get("condition")
+            if condition and not check_condition(condition, self._outputs):
+                logger.info(
+                    "Skipping step '%s': condition not met", step_name
+                )
+                self.tracker.update_step(step_name, "skipped")
+                self._outputs[step_name] = {"_skipped": True}
+                continue
+
             resolved_config = self._resolve_vars(step.get("config", {}))
 
             logger.info("Running step: %s (type=%s)", step_name, step.get("type"))
