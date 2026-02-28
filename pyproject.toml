@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "llm-forge"
 version = "0.1.0"
-description = "Universal LLM training pipeline: SFT → DPO → Eval → Export → Serving"
+description = "Universal LLM training pipeline & agent framework: SFT → DPO → Eval → Export → Serving → Agents"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 dependencies = [
@@ -22,6 +22,7 @@ dependencies = [
     "rich>=13.0",
     "tqdm>=4.66",
     "scikit-learn>=1.5",
+    "requests>=2.31",
 ]
 
 [project.optional-dependencies]
@@ -30,8 +31,11 @@ vllm = ["vllm>=0.6"]
 llamacpp = ["llama-cpp-python>=0.3"]
 deepspeed = ["deepspeed>=0.15"]
 eval = ["seaborn>=0.13", "matplotlib>=3.9"]
+agent-serve = ["fastapi>=0.115", "uvicorn>=0.32"]
+agent-memory = ["chromadb>=0.5"]
+ui = ["fastapi>=0.115", "uvicorn>=0.32", "python-multipart>=0.0.9", "psutil>=5.9", "nvidia-ml-py>=12.0"]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
-all = ["llm-forge[unsloth,vllm,llamacpp,deepspeed,eval,dev]"]
+all = ["llm-forge[unsloth,vllm,llamacpp,deepspeed,eval,agent-serve,agent-memory,ui,dev]"]
 
 [project.scripts]
 forge = "llm_forge.cli:main"

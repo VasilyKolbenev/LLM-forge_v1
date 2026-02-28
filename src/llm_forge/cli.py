@@ -424,6 +424,306 @@ def info() -> None:
     console.print(table)
 
 
+# ──────────────────────────────────────────────────────────
+# Agent subgroup
+# ──────────────────────────────────────────────────────────
+
+@main.group()
+def agent() -> None:
+    """Agent system commands: init, test, serve."""
+
+
+@agent.command(name="init")
+@click.argument("name")
+@click.option(
+    "--model-url",
+    default="http://localhost:8080/v1",
+    help="Model server URL.",
+)
+@click.option(
+    "--model-name",
+    default="default",
+    help="Model name on the server.",
+)
+def agent_init(name: str, model_url: str, model_name: str) -> None:
+    """Create a new agent config.
+
+    \b
+    Examples:
+        forge agent init my-assistant
+        forge agent init code-helper --model-url http://localhost:11434/v1
+    """
+    import yaml
+
+    config = {
+        "inherit": ["agents/base"],
+        "agent": {
+            "name": name,
+            "system_prompt": (
+                f"You are {name}, a helpful AI assistant. "
+                "Use the available tools when needed."
+            ),
+        },
+        "model": {
+            "base_url": model_url,
+            "name": model_name,
+            "timeout": 120,
+        },
+        "tools": [
+            {"name": "search_files", "module": "llm_forge.agent.builtin_tools"},
+            {"name": "read_file", "module": "llm_forge.agent.builtin_tools"},
+            {"name": "calculate", "module": "llm_forge.agent.builtin_tools"},
+        ],
+        "memory": {
+            "max_tokens": 4096,
+            "strategy": "sliding_window",
+        },
+        "guardrails": {
+            "max_iterations": 15,
+            "max_tokens": 8192,
+        },
+    }
+
+    config_dir = Path("configs/agents")
+    config_dir.mkdir(parents=True, exist_ok=True)
+    config_path = config_dir / f"{name}.yaml"
+
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+    console.print(Panel(
+        f"[green]Created:[/green] {config_path}\n"
+        f"[dim]Edit the config, then run:[/dim]\n"
+        f"  forge agent test {config_path}",
+        title=f"New Agent: {name}",
+    ))
+
+
+@agent.command(name="test")
+@click.argument("config_path", type=click.Path(exists=True))
+@click.option("--native-tools", is_flag=True, help="Use native tool calling instead of ReAct.")
+def agent_test(config_path: str, native_tools: bool) -> None:
+    """Interactive REPL to test an agent.
+
+    \b
+    Examples:
+        forge agent test configs/agents/my-assistant.yaml
+        forge agent test configs/agents/my-assistant.yaml --native-tools
+    """
+    from llm_forge.agent.loader import load_agent_config
+    from llm_forge.agent.base import BaseAgent
+    from llm_forge.agent.builtin_tools import get_default_registry
+    from llm_forge.validation import validate_agent_config
+
+    config = load_agent_config(config_path)
+
+    errors = validate_agent_config(config)
+    if errors:
+        for err in errors:
+            console.print(f"[red]Config error:[/red] {err}")
+        sys.exit(1)
+
+    if native_tools:
+        config.setdefault("agent", {})["native_tools"] = True
+
+    tools = get_default_registry()
+    agent_instance = BaseAgent.from_config(config, tools=tools)
+
+    agent_name = config.get("agent", {}).get("name", "agent")
+    console.print(Panel(
+        f"Agent [bold]{agent_name}[/bold] loaded with "
+        f"{len(tools)} tools.\n"
+        f"Type your message and press Enter. Type 'quit' to exit.",
+        title="Agent REPL",
+    ))
+
+    while True:
+        try:
+            user_input = console.input("[bold cyan]You:[/bold cyan] ")
+        except (EOFError, KeyboardInterrupt):
+            console.print("\n[dim]Goodbye![/dim]")
+            break
+
+        if user_input.strip().lower() in ("quit", "exit", "q"):
+            console.print("[dim]Goodbye![/dim]")
+            break
+
+        if not user_input.strip():
+            continue
+
+        try:
+            answer = agent_instance.run(user_input)
+            console.print(f"[bold green]{agent_name}:[/bold green] {answer}\n")
+        except ConnectionError as e:
+            console.print(f"[red]Connection error:[/red] {e}")
+            console.print("[dim]Is your model server running?[/dim]")
+        except Exception as e:
+            console.print(f"[red]Error:[/red] {e}")
+            logger.exception("Agent error")
+
+
+@agent.command(name="serve")
+@click.argument("config_path", type=click.Path(exists=True))
+@click.option("--host", default="0.0.0.0", help="Server host.")
+@click.option("--port", type=int, default=8081, help="Server port.")
+def agent_serve(config_path: str, host: str, port: int) -> None:
+    """Start agent REST API server.
+
+    \b
+    Examples:
+        forge agent serve configs/agents/my-assistant.yaml
+        forge agent serve configs/agents/my-assistant.yaml --port 9000
+    """
+    from llm_forge.agent.loader import load_agent_config
+    from llm_forge.agent.server import start_agent_server
+    from llm_forge.validation import validate_agent_config
+
+    config = load_agent_config(config_path)
+
+    errors = validate_agent_config(config)
+    if errors:
+        for err in errors:
+            console.print(f"[red]Config error:[/red] {err}")
+        sys.exit(1)
+
+    agent_name = config.get("agent", {}).get("name", "agent")
+    console.print(Panel(
+        f"Starting agent [bold]{agent_name}[/bold] server\n"
+        f"Endpoint: http://{host}:{port}/v1/agent/chat\n"
+        f"Health:   http://{host}:{port}/v1/agent/health",
+        title="Agent Server",
+    ))
+
+    start_agent_server(config, host=host, port=port)
+
+
+# ──────────────────────────────────────────────────────────
+# Web UI command
+# ──────────────────────────────────────────────────────────
+
+@main.command(name="ui")
+@click.option("--host", default="0.0.0.0", help="Server host.")
+@click.option("--port", type=int, default=8888, help="Server port.")
+def ui(host: str, port: int) -> None:
+    """Start the Web UI dashboard.
+
+    \b
+    Examples:
+        forge ui
+        forge ui --port 9000
+    """
+    from llm_forge.ui.app import start_ui_server
+
+    console.print(Panel(
+        f"Starting [bold]llm-forge UI[/bold]\n"
+        f"Dashboard: http://{host}:{port}\n"
+        f"API docs:  http://{host}:{port}/docs",
+        title="Web UI",
+    ))
+
+    start_ui_server(host=host, port=port)
+
+
+# ──────────────────────────────────────────────────────────
+# Pipeline subgroup
+# ──────────────────────────────────────────────────────────
+
+@main.group()
+def pipeline() -> None:
+    """Pipeline orchestrator: run multi-step training pipelines."""
+
+
+@pipeline.command(name="run")
+@click.argument("config_path", type=click.Path(exists=True))
+def pipeline_run(config_path: str) -> None:
+    """Run a pipeline from YAML config.
+
+    \b
+    Examples:
+        forge pipeline run configs/pipelines/example.yaml
+    """
+    import yaml
+
+    with open(config_path, encoding="utf-8") as f:
+        pipeline_config = yaml.safe_load(f)
+
+    name = pipeline_config.get("pipeline", {}).get("name", "unnamed")
+    steps = pipeline_config.get("steps", [])
+
+    console.print(Panel(
+        f"Pipeline: [bold]{name}[/bold]\n"
+        f"Steps: {len(steps)}",
+        title="Pipeline Run",
+    ))
+
+    from llm_forge.pipeline.executor import PipelineExecutor
+
+    executor = PipelineExecutor(pipeline_config)
+
+    try:
+        outputs = executor.run()
+        console.print(f"\n[green]Pipeline '{name}' completed successfully![/green]")
+
+        table = Table(title="Step Results")
+        table.add_column("Step", style="cyan")
+        table.add_column("Status", style="green")
+        table.add_column("Key Outputs")
+
+        for step_name, result in outputs.items():
+            keys = ", ".join(
+                f"{k}={v}" for k, v in result.items()
+                if isinstance(v, (str, int, float)) and k != "output_dir"
+            )[:80]
+            table.add_row(step_name, "completed", keys or "—")
+
+        console.print(table)
+    except RuntimeError as e:
+        console.print(f"\n[red]Pipeline failed:[/red] {e}")
+        sys.exit(1)
+
+
+@pipeline.command(name="list")
+@click.option("--name", default=None, help="Filter by pipeline name.")
+def pipeline_list(name: str | None) -> None:
+    """List past pipeline runs.
+
+    \b
+    Examples:
+        forge pipeline list
+        forge pipeline list --name full-pipeline
+    """
+    from llm_forge.pipeline.tracker import PipelineTracker
+
+    runs = PipelineTracker.list_runs(pipeline_name=name)
+
+    if not runs:
+        console.print("[dim]No pipeline runs found.[/dim]")
+        return
+
+    table = Table(title="Pipeline Runs")
+    table.add_column("Run ID", style="cyan")
+    table.add_column("Pipeline", style="green")
+    table.add_column("Status")
+    table.add_column("Started", style="dim")
+    table.add_column("Steps")
+
+    for run in runs:
+        status = run.get("status", "unknown")
+        style = "green" if status == "completed" else "red" if status == "failed" else "yellow"
+        steps = run.get("steps", {})
+        step_summary = f"{sum(1 for s in steps.values() if s.get('status') == 'completed')}/{len(steps)}"
+
+        table.add_row(
+            run.get("run_id", "?"),
+            run.get("pipeline", "?"),
+            f"[{style}]{status}[/{style}]",
+            run.get("started_at", "?")[:19],
+            step_summary,
+        )
+
+    console.print(table)
+
+
 def _show_config_summary(config: dict, task: str) -> None:
     """Display config summary panel.
 

@@ -1,0 +1,287 @@
+"""Tests for workflow store and API routes."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from llm_forge.ui.workflow_store import WorkflowStore
+
+
+# ── Fixtures ────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def store(tmp_path: Path) -> WorkflowStore:
+    return WorkflowStore(store_path=tmp_path / "workflows.json")
+
+
+SAMPLE_NODES = [
+    {"id": "n1", "type": "dataSource", "data": {"label": "My Dataset", "config": {"path": "/data/train.jsonl"}}},
+    {"id": "n2", "type": "model", "data": {"label": "Base Model", "config": {"model_id": "meta-llama/Llama-3-8B"}}},
+    {"id": "n3", "type": "training", "data": {"label": "SFT Train", "config": {"task": "sft", "lr": 2e-5}}},
+]
+
+SAMPLE_EDGES = [
+    {"id": "e1", "source": "n1", "target": "n3"},
+    {"id": "e2", "source": "n2", "target": "n3"},
+]
+
+
+# ── WorkflowStore Unit Tests ───────────────────────────────────────────
+
+class TestWorkflowStore:
+    def test_init_creates_file(self, tmp_path: Path) -> None:
+        path = tmp_path / "wf.json"
+        assert not path.exists()
+        WorkflowStore(store_path=path)
+        assert path.exists()
+        assert json.loads(path.read_text()) == []
+
+    def test_save_creates_workflow(self, store: WorkflowStore) -> None:
+        wf = store.save("Test WF", SAMPLE_NODES, SAMPLE_EDGES)
+        assert wf["name"] == "Test WF"
+        assert wf["nodes"] == SAMPLE_NODES
+        assert wf["edges"] == SAMPLE_EDGES
+        assert "id" in wf
+        assert "created_at" in wf
+        assert wf["run_count"] == 0
+        assert wf["last_run"] is None
+
+    def test_save_generates_unique_ids(self, store: WorkflowStore) -> None:
+        wf1 = store.save("WF1", [], [])
+        wf2 = store.save("WF2", [], [])
+        assert wf1["id"] != wf2["id"]
+
+    def test_save_update_existing(self, store: WorkflowStore) -> None:
+        wf = store.save("Original", SAMPLE_NODES, SAMPLE_EDGES)
+        updated = store.save("Updated", [], [], workflow_id=wf["id"])
+        assert updated["id"] == wf["id"]
+        assert updated["name"] == "Updated"
+        assert updated["nodes"] == []
+        assert store.list_all() == [updated]
+
+    def test_save_update_nonexistent_creates_new(self, store: WorkflowStore) -> None:
+        wf = store.save("New", SAMPLE_NODES, SAMPLE_EDGES, workflow_id="missing")
+        assert wf["name"] == "New"
+        assert len(store.list_all()) == 1
+
+    def test_get_returns_workflow(self, store: WorkflowStore) -> None:
+        wf = store.save("Test", SAMPLE_NODES, SAMPLE_EDGES)
+        got = store.get(wf["id"])
+        assert got is not None
+        assert got["name"] == "Test"
+
+    def test_get_returns_none_for_missing(self, store: WorkflowStore) -> None:
+        assert store.get("nonexistent") is None
+
+    def test_list_all_empty(self, store: WorkflowStore) -> None:
+        assert store.list_all() == []
+
+    def test_list_all_sorted_by_updated_at(self, store: WorkflowStore) -> None:
+        store.save("First", [], [])
+        store.save("Second", [], [])
+        store.save("Third", [], [])
+        names = [w["name"] for w in store.list_all()]
+        assert names == ["Third", "Second", "First"]
+
+    def test_delete_existing(self, store: WorkflowStore) -> None:
+        wf = store.save("Doomed", [], [])
+        assert store.delete(wf["id"]) is True
+        assert store.get(wf["id"]) is None
+
+    def test_delete_nonexistent(self, store: WorkflowStore) -> None:
+        assert store.delete("nope") is False
+
+    def test_mark_run(self, store: WorkflowStore) -> None:
+        wf = store.save("Runnable", SAMPLE_NODES, SAMPLE_EDGES)
+        assert wf["run_count"] == 0
+        store.mark_run(wf["id"])
+        updated = store.get(wf["id"])
+        assert updated is not None
+        assert updated["run_count"] == 1
+        assert updated["last_run"] is not None
+
+    def test_mark_run_increments(self, store: WorkflowStore) -> None:
+        wf = store.save("Multi-run", [], [])
+        store.mark_run(wf["id"])
+        store.mark_run(wf["id"])
+        store.mark_run(wf["id"])
+        assert store.get(wf["id"])["run_count"] == 3
+
+
+class TestWorkflowToPipelineConfig:
+    def test_simple_pipeline(self, store: WorkflowStore) -> None:
+        wf = store.save("Pipeline Test", SAMPLE_NODES, SAMPLE_EDGES)
+        config = store.to_pipeline_config(wf["id"])
+        assert config is not None
+        assert config["pipeline"]["name"] == "Pipeline Test"
+        assert len(config["steps"]) == 3
+
+        # Check step types
+        step_types = {s["name"]: s["type"] for s in config["steps"]}
+        assert step_types["my_dataset"] == "data"
+        assert step_types["base_model"] == "model"
+        assert step_types["sft_train"] == "training"
+
+    def test_dependencies_from_edges(self, store: WorkflowStore) -> None:
+        wf = store.save("Dep Test", SAMPLE_NODES, SAMPLE_EDGES)
+        config = store.to_pipeline_config(wf["id"])
+        assert config is not None
+        training_step = next(s for s in config["steps"] if s["name"] == "sft_train")
+        assert "depends_on" in training_step
+        assert set(training_step["depends_on"]) == {"my_dataset", "base_model"}
+
+    def test_no_deps_for_source_nodes(self, store: WorkflowStore) -> None:
+        wf = store.save("No Deps", SAMPLE_NODES, SAMPLE_EDGES)
+        config = store.to_pipeline_config(wf["id"])
+        assert config is not None
+        dataset_step = next(s for s in config["steps"] if s["name"] == "my_dataset")
+        assert "depends_on" not in dataset_step
+
+    def test_config_forwarded(self, store: WorkflowStore) -> None:
+        wf = store.save("Config Test", SAMPLE_NODES, SAMPLE_EDGES)
+        config = store.to_pipeline_config(wf["id"])
+        assert config is not None
+        training_step = next(s for s in config["steps"] if s["name"] == "sft_train")
+        assert training_step["config"]["task"] == "sft"
+        assert training_step["config"]["lr"] == 2e-5
+
+    def test_nonexistent_returns_none(self, store: WorkflowStore) -> None:
+        assert store.to_pipeline_config("nope") is None
+
+    def test_node_type_mapping(self, store: WorkflowStore) -> None:
+        nodes = [
+            {"id": "a", "type": "eval", "data": {"label": "Eval Step", "config": {}}},
+            {"id": "b", "type": "export", "data": {"label": "Export Step", "config": {}}},
+            {"id": "c", "type": "agent", "data": {"label": "Agent Step", "config": {}}},
+            {"id": "d", "type": "prompt", "data": {"label": "Prompt Step", "config": {}}},
+            {"id": "e", "type": "conditional", "data": {"label": "Check Step", "config": {}}},
+        ]
+        wf = store.save("Type Map", nodes, [])
+        config = store.to_pipeline_config(wf["id"])
+        assert config is not None
+        types = {s["name"]: s["type"] for s in config["steps"]}
+        assert types["eval_step"] == "evaluation"
+        assert types["export_step"] == "export"
+        assert types["agent_step"] == "agent"
+        assert types["prompt_step"] == "prompt"
+        assert types["check_step"] == "conditional"
+
+
+# ── API Route Tests ────────────────────────────────────────────────────
+
+@pytest.fixture
+def client(tmp_path: Path):
+    """Create test client with isolated workflow store."""
+    from fastapi.testclient import TestClient
+
+    from llm_forge.ui.routes import workflows as wf_module
+
+    original_store = wf_module._store
+    wf_module._store = WorkflowStore(store_path=tmp_path / "wf.json")
+    try:
+        from llm_forge.ui.app import create_app
+        app = create_app()
+        yield TestClient(app)
+    finally:
+        wf_module._store = original_store
+
+
+class TestWorkflowAPI:
+    def test_list_empty(self, client) -> None:
+        resp = client.get("/api/v1/workflows")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    def test_save_and_get(self, client) -> None:
+        resp = client.post("/api/v1/workflows", json={
+            "name": "API Test",
+            "nodes": SAMPLE_NODES,
+            "edges": SAMPLE_EDGES,
+        })
+        assert resp.status_code == 200
+        wf = resp.json()
+        assert wf["name"] == "API Test"
+
+        resp2 = client.get(f"/api/v1/workflows/{wf['id']}")
+        assert resp2.status_code == 200
+        assert resp2.json()["name"] == "API Test"
+
+    def test_get_nonexistent(self, client) -> None:
+        resp = client.get("/api/v1/workflows/nope")
+        assert resp.status_code == 404
+
+    def test_update_workflow(self, client) -> None:
+        resp = client.post("/api/v1/workflows", json={
+            "name": "V1",
+            "nodes": [],
+            "edges": [],
+        })
+        wf_id = resp.json()["id"]
+
+        resp2 = client.post("/api/v1/workflows", json={
+            "name": "V2",
+            "nodes": SAMPLE_NODES,
+            "edges": SAMPLE_EDGES,
+            "workflow_id": wf_id,
+        })
+        assert resp2.json()["name"] == "V2"
+        assert resp2.json()["id"] == wf_id
+
+    def test_delete_workflow(self, client) -> None:
+        resp = client.post("/api/v1/workflows", json={
+            "name": "Delete Me",
+            "nodes": [],
+            "edges": [],
+        })
+        wf_id = resp.json()["id"]
+
+        resp2 = client.delete(f"/api/v1/workflows/{wf_id}")
+        assert resp2.status_code == 200
+        assert resp2.json()["status"] == "deleted"
+
+        resp3 = client.get(f"/api/v1/workflows/{wf_id}")
+        assert resp3.status_code == 404
+
+    def test_delete_nonexistent(self, client) -> None:
+        resp = client.delete("/api/v1/workflows/nope")
+        assert resp.status_code == 404
+
+    def test_run_workflow(self, client) -> None:
+        resp = client.post("/api/v1/workflows", json={
+            "name": "Run Me",
+            "nodes": SAMPLE_NODES,
+            "edges": SAMPLE_EDGES,
+        })
+        wf_id = resp.json()["id"]
+
+        resp2 = client.post(f"/api/v1/workflows/{wf_id}/run")
+        assert resp2.status_code == 200
+        data = resp2.json()
+        assert data["status"] == "started"
+        assert "pipeline_config" in data
+        assert data["pipeline_config"]["pipeline"]["name"] == "Run Me"
+
+    def test_run_nonexistent(self, client) -> None:
+        resp = client.post("/api/v1/workflows/nope/run")
+        assert resp.status_code == 404
+
+    def test_get_config(self, client) -> None:
+        resp = client.post("/api/v1/workflows", json={
+            "name": "Config Me",
+            "nodes": SAMPLE_NODES,
+            "edges": SAMPLE_EDGES,
+        })
+        wf_id = resp.json()["id"]
+
+        resp2 = client.get(f"/api/v1/workflows/{wf_id}/config")
+        assert resp2.status_code == 200
+        assert resp2.json()["pipeline"]["name"] == "Config Me"
+
+    def test_list_returns_newest_first(self, client) -> None:
+        client.post("/api/v1/workflows", json={"name": "A", "nodes": [], "edges": []})
+        client.post("/api/v1/workflows", json={"name": "B", "nodes": [], "edges": []})
+        client.post("/api/v1/workflows", json={"name": "C", "nodes": [], "edges": []})
+        resp = client.get("/api/v1/workflows")
+        names = [w["name"] for w in resp.json()]
+        assert names == ["C", "B", "A"]

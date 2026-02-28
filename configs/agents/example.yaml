@@ -1,0 +1,33 @@
+# Example agent config — customize for your use case
+# Run: forge agent test configs/agents/example.yaml
+
+inherit:
+  - agents/base
+
+agent:
+  name: "my-assistant"
+  system_prompt: |
+    You are a helpful coding assistant. You can search files,
+    read documentation, and help with code-related questions.
+    Always think step by step before answering.
+
+model:
+  base_url: "http://localhost:8080/v1"
+  name: "my-fine-tuned-model"
+  timeout: 120
+
+tools:
+  - name: search_files
+    module: llm_forge.agent.builtin_tools
+  - name: read_file
+    module: llm_forge.agent.builtin_tools
+
+memory:
+  max_tokens: 4096
+  strategy: "sliding_window"
+
+guardrails:
+  max_iterations: 20
+  max_tokens: 16384
+  banned_tools: []
+  require_confirmation: []

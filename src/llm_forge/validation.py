@@ -28,7 +28,45 @@ _KNOWN_KEYS = {
     "evaluation", "export",
     # Internal keys set by hardware detection
     "_detected_strategy", "_hardware",
+    # Agent keys
+    "agent", "tools", "memory", "guardrails", "resume_from_checkpoint",
 }
+
+
+def validate_agent_config(config: dict) -> list[str]:
+    """Validate an agent config dict.
+
+    Args:
+        config: Resolved agent config dict.
+
+    Returns:
+        List of error messages (empty = valid).
+    """
+    errors: list[str] = []
+
+    agent = config.get("agent", {})
+    if not agent.get("name"):
+        errors.append("agent.name is required")
+
+    model = config.get("model", {})
+    if not model.get("base_url"):
+        errors.append("model.base_url is required")
+
+    guardrails = config.get("guardrails", {})
+    max_iter = guardrails.get("max_iterations")
+    if max_iter is not None and (not isinstance(max_iter, int) or max_iter < 1):
+        errors.append(f"guardrails.max_iterations must be a positive integer, got: {max_iter}")
+
+    max_tokens = guardrails.get("max_tokens")
+    if max_tokens is not None and (not isinstance(max_tokens, int) or max_tokens < 1):
+        errors.append(f"guardrails.max_tokens must be a positive integer, got: {max_tokens}")
+
+    memory = config.get("memory", {})
+    mem_tokens = memory.get("max_tokens")
+    if mem_tokens is not None and (not isinstance(mem_tokens, int) or mem_tokens < 1):
+        errors.append(f"memory.max_tokens must be a positive integer, got: {mem_tokens}")
+
+    return errors
 
 
 def validate_config(config: dict, task: Optional[str] = None) -> list[str]:

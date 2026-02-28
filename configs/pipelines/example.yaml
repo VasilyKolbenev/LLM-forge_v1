@@ -1,0 +1,42 @@
+pipeline:
+  name: "full-pipeline"
+
+steps:
+  - name: train_sft
+    type: training
+    config:
+      task: sft
+      model:
+        name: "Qwen/Qwen2.5-3B-Instruct"
+      dataset:
+        path: "data/train.csv"
+        format: csv
+        text_column: "text"
+        label_columns: ["label"]
+        test_size: 0.15
+      training:
+        epochs: 3
+        learning_rate: 2e-4
+        batch_size: 1
+        gradient_accumulation: 16
+        max_seq_length: 512
+      output:
+        dir: "./outputs/sft"
+
+  - name: eval_sft
+    type: evaluation
+    depends_on: [train_sft]
+    config:
+      model_path: "${train_sft.adapter_dir}"
+      test_data_path: "data/test.csv"
+      evaluation:
+        batch_size: 8
+
+  - name: export_gguf
+    type: export
+    depends_on: [train_sft]
+    config:
+      model_path: "${train_sft.adapter_dir}"
+      export:
+        format: gguf
+        quantization: q4_k_m

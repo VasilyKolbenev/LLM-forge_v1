@@ -1,0 +1,22 @@
+# Base agent configuration — sensible defaults
+# Override these in your agent config via inherit: [agents/base]
+
+agent:
+  name: "base-agent"
+  system_prompt: "You are a helpful AI assistant. Use the available tools when needed to answer questions accurately."
+
+model:
+  base_url: "http://localhost:8080/v1"
+  name: "default"
+  timeout: 120
+
+memory:
+  max_tokens: 4096
+  strategy: "sliding_window"
+
+guardrails:
+  max_iterations: 15
+  max_tokens: 8192
+  banned_tools: []
+  require_confirmation: []
+  max_tool_retries: 2
