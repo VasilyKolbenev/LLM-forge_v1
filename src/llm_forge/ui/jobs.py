@@ -74,7 +74,7 @@ def _run_training(
     try:
         if task == "sft":
             from llm_forge.training.sft import train_sft
-            results = train_sft(config)
+            results = train_sft(config, progress=progress)
         elif task == "dpo":
             from llm_forge.training.dpo import train_dpo
             results = train_dpo(config)

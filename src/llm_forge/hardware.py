@@ -60,7 +60,8 @@ def detect_hardware() -> HardwareInfo:
 
     num_gpus = torch.cuda.device_count()
     props = torch.cuda.get_device_properties(0)
-    vram_gb = props.total_mem / (1024**3)
+    vram_bytes = getattr(props, "total_memory", None) or getattr(props, "total_mem", 0)
+    vram_gb = vram_bytes / (1024**3)
     total_vram = vram_gb * num_gpus
     cc = (props.major, props.minor)
     bf16_ok = cc >= (8, 0)

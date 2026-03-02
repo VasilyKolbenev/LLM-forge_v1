@@ -16,6 +16,21 @@ export function Experiments() {
 
   useEffect(load, [])
 
+  // Auto-refresh list and detail every 3s while any experiment is running
+  useEffect(() => {
+    const hasRunning = experiments.some((e) => e.status === "running")
+    const detailRunning = detail && detail.status === "running"
+    if (!hasRunning && !detailRunning) return
+
+    const timer = setInterval(() => {
+      load()
+      if (detail && detail.status === "running") {
+        api.getExperiment(String(detail.id)).then(setDetail).catch(() => {})
+      }
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [experiments, detail])
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev)

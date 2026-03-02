@@ -256,9 +256,9 @@ def capture_environment() -> dict:
             env["cuda_version"] = torch.version.cuda
             env["gpu_count"] = torch.cuda.device_count()
             env["gpu_name"] = torch.cuda.get_device_properties(0).name
-            env["gpu_vram_gb"] = round(
-                torch.cuda.get_device_properties(0).total_mem / (1024**3), 1
-            )
+            props = torch.cuda.get_device_properties(0)
+            vram = getattr(props, "total_memory", None) or getattr(props, "total_mem", 0)
+            env["gpu_vram_gb"] = round(vram / (1024**3), 1)
     except ImportError:
         pass
 

@@ -11,7 +11,7 @@ _progress_queues: dict[str, queue.Queue] = {}
 
 
 class ProgressCallback:
-    """HuggingFace TrainerCallback that pushes metrics to a queue.
+    """Pushes training metrics to SSE queue and ExperimentStore.
 
     Used by the SSE endpoint to stream real-time training progress.
 
@@ -36,17 +36,24 @@ class ProgressCallback:
         """
         gpu_mem = _get_gpu_memory()
 
-        event = {
-            "event": "metrics",
-            "data": {
-                "step": step,
-                "epoch": round(epoch, 2),
-                "loss": logs.get("loss"),
-                "learning_rate": logs.get("learning_rate"),
-                "gpu_mem_gb": gpu_mem,
-            },
+        metrics = {
+            "step": step,
+            "epoch": round(epoch, 2),
+            "loss": logs.get("loss"),
+            "learning_rate": logs.get("learning_rate"),
+            "gpu_mem_gb": gpu_mem,
         }
-        self._queue.put(event)
+
+        # Persist to ExperimentStore for UI history
+        if self.experiment_id:
+            try:
+                from llm_forge.ui.experiment_store import ExperimentStore
+                store = ExperimentStore()
+                store.add_metrics(self.experiment_id, metrics)
+            except Exception:
+                logger.debug("Failed to persist metrics to store", exc_info=True)
+
+        self._queue.put({"event": "metrics", "data": metrics})
 
     def on_complete(self, results: dict[str, Any]) -> None:
         """Called when training completes successfully.
@@ -69,6 +76,38 @@ class ProgressCallback:
             "event": "error",
             "data": {"error": error},
         })
+
+
+def make_hf_callback(progress: ProgressCallback) -> Any:
+    """Create a HuggingFace TrainerCallback that bridges to ProgressCallback.
+
+    Args:
+        progress: ProgressCallback instance for SSE streaming.
+
+    Returns:
+        A TrainerCallback instance compatible with HF Trainer.
+    """
+    from transformers import TrainerCallback, TrainerState, TrainerControl, TrainingArguments
+
+    class _HFBridge(TrainerCallback):
+        """Bridges HF Trainer logging events to ProgressCallback."""
+
+        def on_log(
+            self,
+            args: TrainingArguments,
+            state: TrainerState,
+            control: TrainerControl,
+            logs: dict[str, Any] | None = None,
+            **kwargs: Any,
+        ) -> None:
+            if logs and "loss" in logs:
+                progress.on_log(
+                    step=state.global_step,
+                    epoch=state.epoch or 0.0,
+                    logs=logs,
+                )
+
+    return _HFBridge()
 
 
 def get_progress_queue(job_id: str) -> queue.Queue | None:

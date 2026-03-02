@@ -41,7 +41,7 @@ def _get_lora_params(config: dict) -> dict:
     }
 
 
-def train_sft(config: dict) -> dict:
+def train_sft(config: dict, progress: Any = None) -> dict:
     """Run SFT training based on config.
 
     Auto-selects backend (Unsloth vs HF) based on strategy.
@@ -49,6 +49,7 @@ def train_sft(config: dict) -> dict:
 
     Args:
         config: Fully resolved config dict.
+        progress: Optional ProgressCallback for real-time metrics.
 
     Returns:
         Dict with training results (loss, steps, output_dir).
@@ -67,11 +68,17 @@ def train_sft(config: dict) -> dict:
     use_unsloth = config.get("use_unsloth", strategy in ("qlora", "lora"))
     fsdp = config.get("fsdp_enabled", False)
 
+    # Build HF TrainerCallback list for real-time metrics
+    hf_callbacks = []
+    if progress is not None:
+        from llm_forge.ui.progress import make_hf_callback
+        hf_callbacks.append(make_hf_callback(progress))
+
     with track_experiment(config, task="sft") as tracker:
         if use_unsloth and not fsdp:
-            results = _train_sft_unsloth(config)
+            results = _train_sft_unsloth(config, callbacks=hf_callbacks)
         else:
-            results = _train_sft_hf(config)
+            results = _train_sft_hf(config, callbacks=hf_callbacks)
 
         tracker.log_metrics({
             "training_loss": results.get("training_loss", 0),
@@ -87,11 +94,12 @@ def train_sft(config: dict) -> dict:
     return results
 
 
-def _train_sft_unsloth(config: dict) -> dict:
+def _train_sft_unsloth(config: dict, callbacks: list | None = None) -> dict:
     """SFT training with Unsloth backend (single GPU).
 
     Args:
         config: Resolved config dict.
+        callbacks: Optional list of HF TrainerCallbacks.
 
     Returns:
         Training results dict.
@@ -156,12 +164,12 @@ def _train_sft_unsloth(config: dict) -> dict:
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_dataset,
-        dataset_text_field="text",
         max_seq_length=training_config.get("max_seq_length", 512),
         packing=training_config.get("packing", True),
         args=args,
+        callbacks=callbacks or None,
     )
 
     resume_checkpoint = config.get("resume_from_checkpoint")
@@ -187,17 +195,19 @@ def _train_sft_unsloth(config: dict) -> dict:
     }
 
 
-def _train_sft_hf(config: dict) -> dict:
+def _train_sft_hf(config: dict, callbacks: list | None = None) -> dict:
     """SFT training with HuggingFace SFTTrainer (multi-GPU ready).
 
     Args:
         config: Resolved config dict.
+        callbacks: Optional list of HF TrainerCallbacks.
 
     Returns:
         Training results dict.
     """
     import torch
     from transformers import (
+        AutoConfig,
         AutoModelForCausalLM,
         AutoTokenizer,
         BitsAndBytesConfig,
@@ -227,13 +237,26 @@ def _train_sft_hf(config: dict) -> dict:
             ),
         )
 
-    model = AutoModelForCausalLM.from_pretrained(
+    # Detect multimodal models (e.g. Qwen 3.5) and use correct model class
+    model_cls = AutoModelForCausalLM
+    hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+    architectures = getattr(hf_config, "architectures", []) or []
+    if any("ConditionalGeneration" in a for a in architectures):
+        import transformers
+        arch_name = architectures[0]
+        model_cls = getattr(transformers, arch_name, AutoModelForCausalLM)
+        logger.info("Multimodal model detected, using %s", arch_name)
+
+    model = model_cls.from_pretrained(
         model_name,
         quantization_config=bnb_config,
         device_map="auto" if not config.get("fsdp_enabled") else None,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
+        trust_remote_code=True,
     )
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, trust_remote_code=True,
+    )
 
     # Apply LoRA
     if config.get("use_lora", True):
@@ -251,12 +274,16 @@ def _train_sft_hf(config: dict) -> dict:
 
     train_dataset = _load_train_dataset(config, tokenizer)
 
-    args = TrainingArguments(
+    from trl import SFTConfig
+    lr = training_config.get("learning_rate", 2e-4)
+    if isinstance(lr, str):
+        lr = float(lr)
+    args = SFTConfig(
         per_device_train_batch_size=training_config.get("batch_size", 2),
         gradient_accumulation_steps=training_config.get("gradient_accumulation", 8),
         warmup_steps=training_config.get("warmup_steps", 20),
         num_train_epochs=training_config.get("epochs", 3),
-        learning_rate=training_config.get("learning_rate", 2e-4),
+        learning_rate=lr,
         bf16=config.get("_hardware", {}).get("bf16_supported", True),
         logging_steps=training_config.get("logging_steps", 20),
         save_steps=training_config.get("save_steps", 200),
@@ -266,6 +293,9 @@ def _train_sft_hf(config: dict) -> dict:
         seed=training_config.get("seed", 42),
         report_to=config.get("logging", {}).get("report_to", "none"),
         gradient_checkpointing=config.get("gradient_checkpointing", True),
+        dataset_text_field="text",
+        max_length=training_config.get("max_seq_length", 512),
+        packing=training_config.get("packing", True),
         # FSDP settings
         fsdp=config.get("fsdp_sharding_strategy") if config.get("fsdp_enabled") else "",
         fsdp_config={
@@ -276,12 +306,10 @@ def _train_sft_hf(config: dict) -> dict:
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_dataset,
-        dataset_text_field="text",
-        max_seq_length=training_config.get("max_seq_length", 512),
-        packing=training_config.get("packing", True),
         args=args,
+        callbacks=callbacks or None,
     )
 
     resume_checkpoint = config.get("resume_from_checkpoint")
