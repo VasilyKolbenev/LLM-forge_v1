@@ -1,0 +1,27 @@
+# Qwen 3.5 0.8B — ultra-light, fastest training
+# VRAM: ~2-3 GB with QLoRA. Ideal for rapid prototyping.
+
+model:
+  name: Qwen/Qwen3.5-0.8B
+  name_full: Qwen/Qwen3.5-0.8B
+  family: qwen3
+  max_seq_length: 32768
+  chat_template: chatml  # <|im_start|>...<|im_end|>
+
+use_unsloth: false
+load_in_4bit: true
+gradient_checkpointing: true
+
+lora:
+  r: 8
+  lora_alpha: 8
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  lora_dropout: 0
+  bias: none

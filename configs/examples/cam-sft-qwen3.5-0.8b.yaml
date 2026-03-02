@@ -1,0 +1,32 @@
+# CAM Intent Classifier — Qwen 3.5 0.8B SFT
+# Ultra-light model, fastest training (~15 min on 8GB GPU)
+# Best for: quick iterations, baseline experiments
+
+inherit:
+  - base
+  - models/qwen3.5-0.8b
+
+task: sft
+
+dataset:
+  path: data/cam_intents.csv
+  format: csv
+  text_column: phrase
+  label_columns:
+    - domain
+    - skill
+  system_prompt_file: prompts/cam_taxonomy.txt
+  test_size: 0.15
+
+training:
+  epochs: 5
+  learning_rate: 3e-4
+  batch_size: 2
+  gradient_accumulation: 8
+  max_seq_length: 512
+
+output:
+  dir: ./outputs/cam-sft-qwen3.5-0.8b
+  save_adapter: true
+  export_gguf: true
+  quantization: q4_k_m

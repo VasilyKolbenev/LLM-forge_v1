@@ -1,0 +1,26 @@
+# CAM Intent Classifier — Qwen 3.5 4B DPO
+# Preference tuning on top of SFT adapter
+# Run after cam-sft-qwen3.5-4b completes
+
+inherit:
+  - base
+  - models/qwen3.5-4b
+  - tasks/dpo
+
+task: dpo
+
+sft_adapter_path: ./outputs/cam-sft-qwen3.5-4b/lora
+
+dataset:
+  system_prompt_file: prompts/cam_taxonomy.txt
+
+dpo:
+  pairs_path: ./outputs/cam-sft-qwen3.5-4b/dpo_pairs.jsonl
+  beta: 0.1
+
+training:
+  epochs: 2
+  learning_rate: 5e-5
+
+output:
+  dir: ./outputs/cam-dpo-qwen3.5-4b

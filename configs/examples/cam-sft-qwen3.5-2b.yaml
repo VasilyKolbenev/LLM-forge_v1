@@ -1,0 +1,32 @@
+# CAM Intent Classifier — Qwen 3.5 2B SFT
+# Balanced speed and quality (~30 min on 8GB GPU)
+# Best for: production-ready intent classification
+
+inherit:
+  - base
+  - models/qwen3.5-2b
+
+task: sft
+
+dataset:
+  path: data/cam_intents.csv
+  format: csv
+  text_column: phrase
+  label_columns:
+    - domain
+    - skill
+  system_prompt_file: prompts/cam_taxonomy.txt
+  test_size: 0.15
+
+training:
+  epochs: 3
+  learning_rate: 2e-4
+  batch_size: 1
+  gradient_accumulation: 16
+  max_seq_length: 512
+
+output:
+  dir: ./outputs/cam-sft-qwen3.5-2b
+  save_adapter: true
+  export_gguf: true
+  quantization: q4_k_m

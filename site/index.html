@@ -10,6 +10,7 @@
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -180,6 +181,37 @@
     .consultation-email a { color: var(--accent); }
     .consultation-email a:hover { text-decoration: underline; }
 
+    .consultation-form { padding: 32px; }
+    .consultation-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .consultation-form .form-group select,
+    .consultation-form .form-group textarea {
+      width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 14px; font-size: 14px; color: var(--text); outline: none; font-family: inherit;
+    }
+    .consultation-form .form-group select:focus,
+    .consultation-form .form-group textarea:focus { border-color: var(--accent); }
+    .consultation-form .form-group select {
+      appearance: none; -webkit-appearance: none; cursor: pointer; padding-right: 36px;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23a1a1aa' viewBox='0 0 24 24'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center;
+    }
+    .consultation-form .form-group select option { background: var(--surface); color: var(--text); }
+    .consultation-form .form-group textarea { resize: vertical; min-height: 80px; }
+    .radio-group { display: flex; gap: 12px; flex-wrap: wrap; }
+    .radio-option { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 14px; color: var(--text-secondary); }
+    .radio-option input[type="radio"] {
+      appearance: none; -webkit-appearance: none; width: 16px; height: 16px;
+      border: 1px solid var(--border); border-radius: 50%; background: var(--bg); cursor: pointer; position: relative; flex-shrink: 0;
+    }
+    .radio-option input[type="radio"]:checked { border-color: var(--accent); }
+    .radio-option input[type="radio"]:checked::after {
+      content: ''; position: absolute; top: 3px; left: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    }
+    .consultation-feedback { display: none; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+    .consultation-feedback.error { display: block; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: #f87171; }
+    .consultation-feedback.success { display: block; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); color: #4ade80; }
+    .consultation-form .btn-accent:disabled { opacity: 0.6; cursor: not-allowed; }
+
     /* --- DEPLOY --- */
     .deploy-options { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     .deploy-option { border: 1px solid var(--border); border-radius: 16px; padding: 40px 32px; display: flex; flex-direction: column; }
@@ -323,6 +355,7 @@
       .nodes-grid { grid-template-columns: 1fr 1fr; gap: 24px; }
       .pricing-grid { grid-template-columns: 1fr; }
       .deploy-options { grid-template-columns: 1fr; }
+      .consultation-form .form-row { grid-template-columns: 1fr; }
 
       .flywheel { flex-direction: column; }
       .flywheel-arrow { transform: rotate(90deg); }
@@ -556,8 +589,52 @@
       <div class="section-header reveal"><h2>Request a Consultation</h2><p>Interested in LLM Forge for your team? Our team will get back to you within 24 hours.</p></div>
       <div class="consultation-wrap reveal">
         <div class="consultation-frame">
-          <!-- Replace YOUR_FORM_ID with your actual Google Forms embed ID -->
-          <iframe src="https://docs.google.com/forms/d/e/YOUR_FORM_ID/viewform?embedded=true" width="100%" height="560" frameborder="0" marginheight="0" marginwidth="0" loading="lazy" title="Consultation Request Form">Loading form...</iframe>
+          <form id="consultation-form" class="consultation-form" onsubmit="handleConsultation(event)">
+            <div id="consultation-feedback" class="consultation-feedback"></div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="consult-name">Name <span style="color:#ef4444">*</span></label>
+                <input id="consult-name" type="text" placeholder="Your name" required />
+              </div>
+              <div class="form-group">
+                <label for="consult-email">Email <span style="color:#ef4444">*</span></label>
+                <input id="consult-email" type="email" placeholder="you@company.com" required />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="consult-company">Company</label>
+                <input id="consult-company" type="text" placeholder="Company name" />
+              </div>
+              <div class="form-group">
+                <label for="consult-team">Team Size</label>
+                <select id="consult-team">
+                  <option value="">Select team size</option>
+                  <option value="1-5">1–5</option>
+                  <option value="6-25">6–25</option>
+                  <option value="26-100">26–100</option>
+                  <option value="100+">100+</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Deployment Preference</label>
+              <div class="radio-group">
+                <label class="radio-option"><input type="radio" name="deployment" value="Cloud API" /> Cloud API</label>
+                <label class="radio-option"><input type="radio" name="deployment" value="Self-Hosted" /> Self-Hosted</label>
+                <label class="radio-option"><input type="radio" name="deployment" value="Not Sure" checked /> Not Sure</label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="consult-usecase">Use Case</label>
+              <textarea id="consult-usecase" placeholder="What problem are you looking to solve with LLMs?" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="consult-message">Message</label>
+              <textarea id="consult-message" placeholder="Any additional details or questions..." rows="3"></textarea>
+            </div>
+            <button type="submit" id="consult-submit" class="btn btn-accent" style="width:100%">Submit Request</button>
+          </form>
         </div>
         <div class="consultation-email">Or email us at <a href="mailto:hello@llmforge.dev">hello@llmforge.dev</a></div>
       </div>
@@ -675,8 +752,8 @@
   <script>
     // === Firebase Config (replace with your project) ===
     const firebaseConfig = { apiKey:"AIzaSyBUtI0rKxKzJdUciC4uKbBeKojOuVOpja4", authDomain:"llm-forge.firebaseapp.com", projectId:"llm-forge", storageBucket:"llm-forge.firebasestorage.app", messagingSenderId:"746816467916", appId:"1:746816467916:web:d08d6927bd2a1d54352369" };
-    let fbAuth = null;
-    try { firebase.initializeApp(firebaseConfig); fbAuth = firebase.auth(); } catch(e) { console.warn("Firebase not configured:", e.message); }
+    let fbAuth = null, fbDb = null;
+    try { firebase.initializeApp(firebaseConfig); fbAuth = firebase.auth(); fbDb = firebase.firestore(); } catch(e) { console.warn("Firebase not configured:", e.message); }
 
     let currentUser = null, authMode = 'signin';
     if (fbAuth) fbAuth.onAuthStateChanged(u => { currentUser = u; updateAuth(); });
@@ -721,6 +798,58 @@
     async function googleSignIn() { if(!fbAuth){showError('Firebase not configured.');return;} try{await fbAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider());closeAuthModal();}catch(e){if(e.code!=='auth/popup-closed-by-user')showError(e.message);} }
     async function signOut() { if(fbAuth) await fbAuth.signOut(); currentUser=null; updateAuth(); }
     async function forgotPassword() { if(!fbAuth){showError('Firebase not configured.');return;} const e=document.getElementById('auth-email').value; if(!e){showError('Enter your email first.');return;} try{await fbAuth.sendPasswordResetEmail(e);const el=document.getElementById('auth-error');el.textContent='Reset email sent!';el.classList.add('show');el.style.color='#4ade80';el.style.borderColor='rgba(34,197,94,0.2)';el.style.background='rgba(34,197,94,0.1)';}catch(err){showError(err.message);} }
+
+    // === Consultation Form ===
+    async function handleConsultation(e) {
+      e.preventDefault();
+      const feedback = document.getElementById('consultation-feedback');
+      const submitBtn = document.getElementById('consult-submit');
+      feedback.className = 'consultation-feedback';
+      feedback.textContent = '';
+
+      const name = document.getElementById('consult-name').value.trim();
+      const email = document.getElementById('consult-email').value.trim();
+      const company = document.getElementById('consult-company').value.trim();
+      const teamSize = document.getElementById('consult-team').value;
+      const deploymentEl = document.querySelector('input[name="deployment"]:checked');
+      const deployment = deploymentEl ? deploymentEl.value : 'Not Sure';
+      const useCase = document.getElementById('consult-usecase').value.trim();
+      const message = document.getElementById('consult-message').value.trim();
+
+      if (!name || !email) {
+        feedback.textContent = 'Please fill in all required fields.';
+        feedback.className = 'consultation-feedback error';
+        return;
+      }
+      if (!fbDb) {
+        feedback.textContent = 'Form service is temporarily unavailable. Please email us at hello@llmforge.dev.';
+        feedback.className = 'consultation-feedback error';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+      try {
+        await fbDb.collection('consultations').add({
+          name, email, company: company || null, teamSize: teamSize || null,
+          deployment, useCase: useCase || null, message: message || null,
+          submittedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          source: 'website', status: 'new'
+        });
+        feedback.textContent = 'Thank you! Your request has been submitted. We\'ll get back to you within 24 hours.';
+        feedback.className = 'consultation-feedback success';
+        document.getElementById('consultation-form').reset();
+        const defaultRadio = document.querySelector('input[name="deployment"][value="Not Sure"]');
+        if (defaultRadio) defaultRadio.checked = true;
+      } catch (err) {
+        console.error('Consultation submission error:', err);
+        feedback.textContent = 'Something went wrong. Please try again or email us at hello@llmforge.dev.';
+        feedback.className = 'consultation-feedback error';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Request';
+      }
+    }
 
     // === Mobile Menu ===
     function toggleMobile() { document.getElementById('mobile-menu').classList.toggle('open'); }
