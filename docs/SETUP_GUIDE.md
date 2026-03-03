@@ -1,4 +1,4 @@
-# llm-forge: Setup Guide
+# llm-forge: Полное руководство
 
 Пошаговая инструкция по установке и использованию платформы llm-forge для файнтюнинга LLM.
 
@@ -53,6 +53,14 @@ pip install -e ".[ui,eval]"
 | `pip install -e ".[ui]"` | + Web UI (FastAPI, uvicorn) |
 | `pip install -e ".[eval]"` | + Графики eval (seaborn, matplotlib) |
 | `pip install -e ".[unsloth]"` | + Unsloth (2-5x ускорение, Linux only) |
+| `pip install -e ".[hpo]"` | + HPO/Optuna (поиск гиперпараметров) |
+| `pip install -e ".[vllm]"` | + vLLM serving backend |
+| `pip install -e ".[llamacpp]"` | + llama.cpp serving backend |
+| `pip install -e ".[deepspeed]"` | + DeepSpeed (multi-GPU) |
+| `pip install -e ".[agent-serve]"` | + Agent REST server |
+| `pip install -e ".[agent-memory]"` | + Agent memory backends |
+| `pip install -e ".[tracking-clearml]"` | + ClearML tracking |
+| `pip install -e ".[tracking-wandb]"` | + W&B tracking |
 | `pip install -e ".[all]"` | Все зависимости |
 
 ### Дополнительно (для UI):
@@ -88,6 +96,9 @@ OPENAI_API_KEY=sk-your-key-here
 
 # (Опционально) Включить аутентификацию API
 # FORGE_AUTH_ENABLED=true
+
+# (Опционально) HuggingFace токен для gated-моделей (Llama и др.)
+# HF_TOKEN=hf_your_token_here
 ```
 
 ---
@@ -105,7 +116,13 @@ python -c "from llm_forge.ui.app import create_app; import uvicorn; uvicorn.run(
 python -m llm_forge.ui.app
 ```
 
+Или через CLI:
+```bash
+forge ui
+```
+
 Backend доступен на `http://localhost:8888`.
+Swagger/OpenAPI документация: `http://localhost:8888/docs`.
 
 ### 5.2 Frontend (Web UI)
 
@@ -129,7 +146,7 @@ UI доступен на `http://localhost:5173`.
 
 ### Формат датасета
 
-llm-forge поддерживает CSV, JSONL, JSON, Parquet. Минимальный CSV:
+llm-forge поддерживает CSV, JSONL, JSON, Parquet, Excel. Минимальный CSV:
 
 ```csv
 phrase,domain,skill
@@ -143,6 +160,22 @@ phrase,domain,skill
 ```bash
 cp your_dataset.csv data/my_intents.csv
 ```
+
+### Загрузка через UI
+
+1. Откройте страницу **Datasets**
+2. Нажмите **Upload** и выберите файл (CSV, JSONL, Parquet, Excel)
+3. Платформа автоматически определит формат, колонки и количество строк
+4. Используйте **Preview** для просмотра первых N строк
+
+### Загрузка через API
+
+```bash
+curl -X POST http://localhost:8888/api/v1/datasets/upload \
+  -F "file=@data/my_intents.csv"
+```
+
+Ответ: `{"id": "...", "columns": [...], "num_rows": 1234, "size": "..."}`.
 
 ### System Prompt (опционально)
 
@@ -237,6 +270,14 @@ output:
   save_adapter: true
 ```
 
+### Быстрое создание конфига через CLI:
+
+```bash
+forge init my-experiment --task sft --model qwen3.5-0.8b
+```
+
+Это создаст готовый YAML в `configs/examples/`.
+
 ### Ключевые параметры:
 
 | Параметр | Описание | Рекомендация |
@@ -260,6 +301,11 @@ forge train configs/examples/my-experiment.yaml
 С переопределением параметров:
 ```bash
 forge train configs/examples/my-experiment.yaml epochs=5 learning_rate=1e-4
+```
+
+Возобновление с чекпоинта:
+```bash
+forge train configs/examples/my-experiment.yaml --resume outputs/my-experiment/checkpoint-500
 ```
 
 ### Через Web UI:
@@ -286,6 +332,14 @@ print(resp.json())  # {"job_id": "...", "experiment_id": "...", "status": "runni
 
 Тренировка идёт в фоне. Прогресс виден в UI на странице **Experiments**.
 
+### Отслеживание прогресса (SSE):
+
+```bash
+curl -N http://localhost:8888/api/v1/training/progress/<job_id>
+```
+
+Поток отдаёт события: `step`, `loss`, `epoch`, `gpu_mem_gb`.
+
 ---
 
 ## 10. Оценка модели (Eval)
@@ -298,6 +352,11 @@ python scripts/run_eval.py \
   --adapter outputs/my-experiment/lora \
   --test-data data/my_intents_test.csv \
   --experiment-id <ID из UI>
+```
+
+Или через CLI:
+```bash
+forge eval --model outputs/my-experiment/lora --test-data data/my_intents_test.csv
 ```
 
 Результаты:
@@ -320,6 +379,8 @@ DPO (Direct Preference Optimization) — второй этап после SFT.
 ```jsonl
 {"prompt": "Оплатить газ", "chosen": "{\"domain\": \"HOUSE\", \"skill\": \"utility_bill\"}", "rejected": "{\"domain\": \"PAYMENTS\", \"skill\": \"payment_status\"}"}
 ```
+
+**Важно:** Формат `chosen` и `rejected` должен точно совпадать с форматом, на который натренирована SFT-модель. Лишние поля приводят к деградации JSON parse rate.
 
 ### Конфиг DPO:
 
@@ -361,12 +422,850 @@ forge export --model ./outputs/my-experiment/lora --format gguf --quant q4_k_m
 forge export --model ./outputs/my-experiment/lora --format merged
 ```
 
+### Push на HuggingFace Hub:
+
+```bash
+forge export --model ./outputs/my-experiment/lora --format hub
+```
+
+### Через API:
+
+```bash
+curl -X POST http://localhost:8888/api/v1/export -H "Content-Type: application/json" \
+  -d '{"experiment_id": "...", "format": "gguf", "quantization": "q4_k_m"}'
+```
+
+Доступные квантизации: `q4_k_m`, `q8_0`, `f16`.
+
 ---
 
 ## 13. Serving (запуск модели как API)
 
+### llama.cpp (GGUF файлы):
+
 ```bash
-forge serve --model ./outputs/model-q4_k_m.gguf --port 8080
+forge serve --model ./outputs/model-q4_k_m.gguf --port 8080 --backend llamacpp
+```
+
+### vLLM (полные модели):
+
+```bash
+forge serve --model ./outputs/my-merged-model --port 8080 --backend vllm
+```
+
+API совместим с форматом OpenAI (`/v1/chat/completions`).
+
+### Метрики serving:
+
+```bash
+# Получить метрики за последние 60 секунд
+curl http://localhost:8888/api/v1/serving/metrics?window=60
+```
+
+Ответ содержит: `latency_p50`, `latency_p95`, `latency_p99`, `rps`, `tokens_per_sec`, `error_rate`.
+
+---
+
+## 14. Workflow Builder (визуальный конструктор пайплайнов)
+
+Workflow Builder позволяет собирать сложные ML-пайплайны визуально в стиле drag-and-drop.
+
+### Открытие
+
+Перейдите на страницу **Workflows** в UI (или `/workflows`).
+
+### Создание workflow
+
+1. Перетащите ноды из палитры (левая панель) на канвас
+2. Соедините ноды стрелками (от выхода одного к входу другого)
+3. Кликните на ноду правой кнопкой для настройки параметров
+4. Нажмите **Save** для сохранения
+5. Нажмите **Run** для запуска
+
+### Доступные типы нод (26 штук):
+
+| Группа | Ноды | Описание |
+|--------|------|----------|
+| **Data** | `dataSource`, `model`, `prompt`, `splitter` | Источники данных, выбор модели, промпт, разбиение датасета |
+| **Training** | `training` | SFT/DPO обучение |
+| **Evaluation** | `eval`, `conditional`, `llmJudge`, `abTest` | Eval, условное ветвление, LLM-as-Judge, A/B тест |
+| **Export** | `export`, `serve` | Экспорт в GGUF/merged, деплой как API |
+| **Agent** | `agent`, `rag`, `router`, `inference`, `dataGen` | Агентские шаги, RAG, роутинг, инференс, генерация данных |
+| **Protocols** | `mcp`, `a2a`, `gateway` | MCP/A2A/Gateway интеграция |
+| **Safety** | `inputGuard`, `outputGuard` | Guardrails на входе и выходе |
+| **Ops** | `cache`, `canary`, `feedback`, `tracer` | Кэш, canary деплой, фидбэк, трейсинг |
+| **Structure** | `group` | Группировка нод |
+
+### Пример: типичный пайплайн
+
+```
+dataSource → training → eval → conditional → export → serve
+                                    ↓ (если accuracy < 85%)
+                                  training (retry с другими params)
+```
+
+### API workflow:
+
+```bash
+# Список всех workflow
+curl http://localhost:8888/api/v1/workflows
+
+# Сохранить workflow
+curl -X POST http://localhost:8888/api/v1/workflows \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-pipeline", "nodes": [...], "edges": [...]}'
+
+# Запустить workflow
+curl -X POST http://localhost:8888/api/v1/workflows/<workflow_id>/run
+
+# Получить pipeline-конфиг без запуска
+curl http://localhost:8888/api/v1/workflows/<workflow_id>/config
+```
+
+---
+
+## 15. Pipeline Execution (программное выполнение пайплайнов)
+
+Pipeline — это YAML-конфигурация для последовательного/параллельного выполнения шагов без UI.
+
+### Конфиг pipeline:
+
+```yaml
+# configs/pipelines/full-training.yaml
+steps:
+  - name: fingerprint
+    type: fingerprint
+    config:
+      path: data/my_intents.csv
+
+  - name: train
+    type: training
+    depends_on: [fingerprint]
+    config:
+      task: sft
+      inherit: [base, models/qwen3.5-0.8b]
+      dataset:
+        path: data/my_intents.csv
+
+  - name: eval
+    type: evaluation
+    depends_on: [train]
+    config:
+      adapter_path: ${train.adapter_path}
+
+  - name: export
+    type: export
+    depends_on: [eval]
+    condition:
+      metric: ${eval.accuracy}
+      operator: gte
+      value: 0.85
+    config:
+      format: gguf
+      quantization: q4_k_m
+
+  - name: register
+    type: register
+    depends_on: [export]
+    config:
+      name: my-intent-classifier
+      tags: [production, v1]
+```
+
+### Запуск:
+
+```bash
+# CLI
+forge pipeline run configs/pipelines/full-training.yaml
+
+# Просмотр прошлых запусков
+forge pipeline list
+```
+
+### Переменные между шагами
+
+Шаги передают результаты дальше через синтаксис `${step_name.output_key}`. Например, `${train.adapter_path}` содержит путь к адаптеру из шага `train`.
+
+### Условное выполнение
+
+Шаг с `condition` выполняется только если условие истинно. Операторы: `gte`, `lte`, `gt`, `lt`, `eq`.
+
+### WebSocket (реалтайм):
+
+```javascript
+const ws = new WebSocket('ws://localhost:8888/api/v1/pipeline/run');
+ws.send(JSON.stringify({ pipeline_config: config }));
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  // data.type: "step_update" | "pipeline_complete" | "pipeline_error"
+  // data.step_name, data.status, data.duration_s
+};
+```
+
+---
+
+## 16. Prompt Lab (управление промптами)
+
+Prompt Lab позволяет версионировать, тестировать и сравнивать system prompts.
+
+### UI
+
+Откройте страницу **Prompt Lab** (или `/prompts`).
+
+Возможности:
+- Создание промпта с названием, описанием и тегами
+- Редактирование с автоматическим версионированием (v1, v2, v3...)
+- Шаблоны с переменными: `{{variable}}`
+- Тестовая панель: заполняете переменные → видите результат рендеринга
+- Diff между версиями (визуальное сравнение)
+- Привязка модели и параметров к каждой версии
+
+### Пример промпта с переменными:
+
+```
+You are a {{task_type}} for {{domain}}.
+Given a user message, respond with JSON:
+{"domain": "{{expected_domain}}", "skill": "<SKILL>"}
+```
+
+### API промптов:
+
+```bash
+# Создать промпт
+curl -X POST http://localhost:8888/api/v1/prompts \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "intent-classifier",
+    "system_prompt": "You are an intent classifier...",
+    "description": "Классификатор интентов",
+    "tags": ["classifier", "production"]
+  }'
+
+# Список промптов (фильтр по тегу)
+curl "http://localhost:8888/api/v1/prompts?tag=classifier"
+
+# Добавить новую версию
+curl -X POST http://localhost:8888/api/v1/prompts/<prompt_id>/versions \
+  -d '{"system_prompt": "Updated prompt text...", "model": "qwen3.5-2b"}'
+
+# Diff между версиями
+curl "http://localhost:8888/api/v1/prompts/<prompt_id>/diff?v1=1&v2=3"
+
+# Тест промпта с переменными
+curl -X POST http://localhost:8888/api/v1/prompts/<prompt_id>/test \
+  -d '{"variables": {"task_type": "classifier", "domain": "banking"}}'
+```
+
+---
+
+## 17. Monitoring (мониторинг системы)
+
+Реалтайм-мониторинг GPU, CPU и RAM.
+
+### UI
+
+Откройте страницу **Monitoring** (или `/monitoring`). Графики обновляются каждые 2 секунды:
+- **GPU Utilization** — загрузка GPU (%)
+- **VRAM** — использование видеопамяти (GB)
+- **GPU Temperature** — температура (°C)
+- **GPU Power** — потребление энергии (W)
+- **CPU** — загрузка процессора (%)
+- **RAM** — использование оперативной памяти (GB)
+
+При наличии нескольких GPU отображается таблица по каждому.
+
+### API:
+
+```bash
+# SSE поток (обновления каждые 2 сек)
+curl -N http://localhost:8888/api/v1/metrics/live
+
+# Разовый снимок
+curl http://localhost:8888/api/v1/metrics/snapshot
+```
+
+Данные: `cpu_percent`, `ram_used_gb`, `ram_total_gb`, а для каждого GPU: `name`, `utilization_percent`, `memory_used_gb`, `memory_total_gb`, `temperature_c`, `power_watts`.
+
+---
+
+## 18. Compute Management (управление вычислительными ресурсами)
+
+Позволяет добавлять удалённые GPU-серверы через SSH.
+
+### UI
+
+Откройте страницу **Compute** (или `/compute`):
+- Локальная машина отображается автоматически
+- Нажмите **Add Target** для добавления удалённого сервера
+- Для каждого таргета доступны кнопки: **Test** (проверка SSH), **Detect** (определение GPU), **Remove**
+
+### Добавление удалённого GPU-сервера:
+
+```bash
+# Добавить таргет
+curl -X POST http://localhost:8888/api/v1/compute/targets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "gpu-server-1",
+    "host": "192.168.1.100",
+    "user": "ml-user",
+    "port": 22,
+    "key_path": "~/.ssh/id_rsa"
+  }'
+
+# Проверить SSH-соединение
+curl -X POST http://localhost:8888/api/v1/compute/targets/<target_id>/test
+
+# Определить GPU на удалённой машине
+curl -X POST http://localhost:8888/api/v1/compute/targets/<target_id>/detect
+```
+
+Detect возвращает: `gpu_count`, `gpu_type`, `vram_gb`.
+
+---
+
+## 19. Model Registry (реестр моделей)
+
+Реестр для версионирования и управления жизненным циклом обученных моделей.
+
+### Жизненный цикл модели:
+
+```
+registered → staging → production → archived
+```
+
+### Регистрация через CLI:
+
+```bash
+# Зарегистрировать модель
+forge registry register my-classifier \
+  --model-path outputs/my-experiment/lora \
+  --task sft \
+  --base-model Qwen/Qwen3.5-0.8B \
+  --tag production
+
+# Список моделей
+forge registry list
+forge registry list --status production
+
+# Повышение статуса
+forge registry promote my-classifier-v1 staging
+forge registry promote my-classifier-v1 production
+```
+
+### API:
+
+```bash
+# Зарегистрировать
+curl -X POST http://localhost:8888/api/v1/registry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-classifier",
+    "model_path": "outputs/my-experiment/lora",
+    "task": "sft",
+    "base_model": "Qwen/Qwen3.5-0.8B",
+    "metrics": {"accuracy": 0.875, "f1": 0.903},
+    "tags": ["intent", "v1"]
+  }'
+
+# Список (с фильтрами)
+curl "http://localhost:8888/api/v1/registry?status=production&tag=intent"
+
+# Сравнить модели
+curl -X POST http://localhost:8888/api/v1/registry/compare \
+  -d '{"model_ids": ["my-classifier-v1", "my-classifier-v2"]}'
+
+# Обновить статус
+curl -X PUT http://localhost:8888/api/v1/registry/my-classifier-v1/status \
+  -d '{"status": "production"}'
+```
+
+Версионирование автоматическое: `my-classifier-v1`, `my-classifier-v2`, ...
+
+---
+
+## 20. HPO (поиск гиперпараметров)
+
+Автоматический поиск оптимальных гиперпараметров через Optuna.
+
+### Установка:
+
+```bash
+pip install -e ".[hpo]"
+```
+
+### Конфиг sweep:
+
+```yaml
+# configs/sweeps/lr-sweep.yaml
+hpo:
+  method: optuna
+  metric: training_loss
+  direction: minimize
+  n_trials: 20
+  search_space:
+    training.learning_rate: [1e-5, 5e-4, log]     # log-uniform
+    lora.r: [8, 64, int]                            # целое число
+    lora.lora_alpha: [16, 128, int]
+    training.epochs: [1, 5, int]
+    training.batch_size: [1, 2, 4, 8]              # категориальный
+```
+
+### Типы search space:
+
+| Формат | Тип | Пример |
+|--------|-----|--------|
+| `[min, max, log]` | Log-uniform float | `[1e-5, 5e-4, log]` |
+| `[min, max]` | Linear float | `[0.01, 0.5]` |
+| `[min, max, int]` | Integer range | `[8, 64, int]` |
+| `[val1, val2, ...]` | Categorical | `[1, 2, 4, 8]` |
+
+### Запуск:
+
+```bash
+forge sweep configs/examples/my-experiment.yaml configs/sweeps/lr-sweep.yaml \
+  --n-trials 20 \
+  --name my-lr-search
+```
+
+Результаты сохраняются в `./data/sweeps/my-lr-search.json` с лучшими параметрами и всеми trial'ами.
+
+---
+
+## 21. Co-pilot / Assistant (AI-помощник)
+
+Встроенный AI-помощник доступен на каждой странице UI в правой панели.
+
+### Команды (всегда доступны, без OpenAI ключа):
+
+| Команда | Описание |
+|---------|----------|
+| `/status` | Текущие задания и статус системы |
+| `/datasets` | Список загруженных датасетов |
+| `/train name=X model=Y dataset=Z` | Запуск обучения |
+| `/recommend model=3B rows=1000` | Рекомендации по гиперпараметрам для модели/данных |
+| `/hardware` | Информация о GPU/CPU/RAM |
+| `/experiments` | Список экспериментов |
+| `/workflows` | Список сохранённых workflow |
+| `/estimate model=3B rows=1000 epochs=3` | Оценка времени и стоимости обучения |
+| `/cancel job_id=X` | Отменить задание |
+| `/preview id=X` | Превью эксперимента |
+| `/help` | Справка по командам |
+
+### LLM-режим (требует OPENAI_API_KEY):
+
+Если задан `OPENAI_API_KEY` в `.env`, помощник использует GPT-4o-mini с доступом к 14 инструментам платформы:
+- Управление экспериментами и обучением
+- Просмотр и анализ датасетов
+- Рекомендации параметров с учётом вашего GPU
+- Оценка стоимости обучения
+- Подбор конфигурации под задачу (chatbot, classifier, summarizer и др.)
+
+Просто пишите на естественном языке: _"Запусти обучение qwen 0.8b на датасете cam_intents.csv с 5 эпохами"_.
+
+---
+
+## 22. Agent Framework (создание AI-агентов)
+
+Фреймворк для создания и деплоя AI-агентов с инструментами, памятью и guardrails.
+
+### Создание агента:
+
+```bash
+forge agent init my-assistant
+```
+
+Создаёт конфиг `configs/agents/my-assistant.yaml`:
+
+```yaml
+agent:
+  name: my-assistant
+  system_prompt: "You are a helpful assistant..."
+
+model:
+  base_url: http://localhost:8080/v1   # Ваш LLM-сервер
+  name: default
+  timeout: 120
+
+tools:
+  - search_files
+  - read_file
+  - list_directory
+  - calculate
+
+memory:
+  max_tokens: 4096
+  strategy: sliding_window
+
+guardrails:
+  max_iterations: 15
+  max_tokens: 8192
+```
+
+### Встроенные инструменты:
+
+| Инструмент | Описание |
+|------------|----------|
+| `search_files` | Поиск файлов по glob-паттерну |
+| `read_file` | Чтение файла (до 200 строк) |
+| `list_directory` | Список файлов в директории |
+| `calculate` | Безопасные математические вычисления |
+
+### Тестирование (интерактивный REPL):
+
+```bash
+forge agent test configs/agents/my-assistant.yaml
+```
+
+### Деплой агента как API:
+
+```bash
+forge agent serve configs/agents/my-assistant.yaml --port 8081
+```
+
+API: `POST /v1/agent/chat` с телом `{"message": "..."}`.
+
+Два режима вызова инструментов:
+- **Native** — function calling (OpenAI-совместимый)
+- **ReAct** — текстовый цикл Thought/Action/Observation
+
+---
+
+## 23. Protocols (MCP, A2A, API Gateway)
+
+### MCP (Model Context Protocol)
+
+Позволяет модели взаимодействовать с внешними инструментами через стандартный протокол.
+
+```bash
+curl -X POST http://localhost:8888/api/v1/protocols/mcp/configure \
+  -d '{
+    "name": "forge-mcp",
+    "transport": "sse",
+    "host": "localhost",
+    "port": 8890,
+    "tools": ["train", "eval", "export"],
+    "auth_token_env": "MCP_TOKEN"
+  }'
+```
+
+Транспорты: `stdio`, `sse`, `streamable_http`.
+
+### A2A (Agent-to-Agent)
+
+Google Agent-to-Agent протокол для взаимодействия между агентами.
+
+```bash
+# Получить карточку агента
+curl http://localhost:8888/api/v1/protocols/a2a/agent-card
+
+# Настроить
+curl -X POST http://localhost:8888/api/v1/protocols/a2a/configure \
+  -d '{
+    "agent_card": {
+      "name": "forge-agent",
+      "description": "LLM training agent",
+      "url": "http://localhost:8888",
+      "skills": ["training", "evaluation", "export"],
+      "capabilities": {"streaming": true, "pushNotifications": false}
+    }
+  }'
+```
+
+Состояния задач: `submitted` → `working` → `completed` / `failed` / `canceled`.
+
+### API Gateway
+
+Маршрутизация запросов к нескольким агентам через единую точку входа.
+
+```bash
+curl -X POST http://localhost:8888/api/v1/protocols/gateway/configure \
+  -d '{
+    "name": "forge-gateway",
+    "host": "0.0.0.0",
+    "port": 9000,
+    "protocols": ["rest"],
+    "auth_method": "api_key",
+    "rate_limit": 100,
+    "cors_origins": ["*"],
+    "load_balancer": "round_robin"
+  }'
+```
+
+### Сводка:
+
+```bash
+curl http://localhost:8888/api/v1/protocols/summary
+```
+
+---
+
+## 24. Guardrails (защитные механизмы)
+
+Guardrails защищают вход и выход модели от нежелательного контента.
+
+### Типы правил:
+
+| Тип | Описание | Действия |
+|-----|----------|----------|
+| `pii` | Детекция email, телефонов, SSN, кредитных карт, IP, API-ключей | block, mask, warn, log |
+| `injection` | Детекция prompt injection (7 паттернов) | block, warn, log |
+| `toxicity` | Блокировка по списку запрещённых слов | block, warn, log |
+| `regex` | Кастомный regex-паттерн (whitelist/blacklist) | block, warn, log |
+| `json_schema` | Валидация JSON-формата с обязательными ключами | block, warn |
+| `length` | Проверка min/max длины ответа | block, warn |
+
+### Использование в workflow:
+
+Добавьте ноды `inputGuard` и `outputGuard` в Workflow Builder для фильтрации на входе и выходе.
+
+### Использование в агенте:
+
+```yaml
+# В конфиге агента
+guardrails:
+  max_iterations: 15
+  max_tokens: 8192
+```
+
+### Программное использование:
+
+```python
+from llm_forge.guardrails.engine import create_input_guard, create_output_guard
+
+input_guard = create_input_guard(pii=True, injection=True, toxicity=True, pii_action="mask")
+output_guard = create_output_guard(pii=True, json_schema=True, required_keys=["domain", "skill"])
+
+result = input_guard.check("my input text")
+# result.passed, result.violations, result.modified_text
+```
+
+При `pii_action="mask"` PII заменяется на `[EMAIL_REDACTED]`, `[PHONE_REDACTED]` и т.д.
+
+---
+
+## 25. Experiment Tracking (отслеживание экспериментов)
+
+### Управление через CLI:
+
+```bash
+# Список прошлых запусков
+forge runs list
+forge runs list --project my-project --status completed --limit 20
+
+# Детали запуска
+forge runs show <run_id>
+
+# Сравнение нескольких запусков
+forge runs compare <run_id_1> <run_id_2> <run_id_3>
+```
+
+### API:
+
+```bash
+# Список
+curl "http://localhost:8888/api/v1/runs?project=my-project&status=completed&limit=20"
+
+# Детали
+curl http://localhost:8888/api/v1/runs/<run_id>
+
+# Сравнение (config diff + metrics)
+curl -X POST http://localhost:8888/api/v1/runs/compare \
+  -d '{"run_ids": ["run1", "run2"]}'
+```
+
+### Интеграции:
+
+- **ClearML**: `pip install -e ".[tracking-clearml]"` — автоматический логгинг в ClearML
+- **W&B**: `pip install -e ".[tracking-wandb]"` — автоматический логгинг в Weights & Biases
+
+---
+
+## 26. Observability (наблюдаемость)
+
+### Трейсинг
+
+Встроенный трейсер в стиле OpenTelemetry для отслеживания LLM-вызовов:
+
+```python
+from llm_forge.observability.tracer import get_tracer
+
+tracer = get_tracer()
+with tracer.start_trace("my-pipeline") as trace:
+    with tracer.start_span(trace, "preprocessing"):
+        # ...
+        pass
+    with tracer.start_span(trace, "inference"):
+        tracer.record_llm_call(trace, model="qwen3.5-0.8b",
+                               input_tokens=100, output_tokens=50, latency_ms=230)
+```
+
+### Cost Tracking
+
+Отслеживание стоимости LLM-вызовов:
+
+```python
+from llm_forge.cost import CostTracker
+
+tracker = CostTracker(budget_usd=10.0)
+tracker.record(model="gpt-4o", input_tokens=1000, output_tokens=500, operation="eval")
+
+summary = tracker.get_summary()
+# {"total_cost": 0.0075, "budget_remaining": 9.9925, "by_model": {...}}
+```
+
+Встроенные цены: GPT-4o, GPT-4o-mini, Claude Sonnet/Opus/Haiku, Llama, Mistral, local (бесплатно).
+
+### Semantic Cache
+
+LRU-кэш LLM-ответов для экономии токенов:
+
+```python
+from llm_forge.cache import SemanticCache
+
+cache = SemanticCache(max_entries=10000, ttl=3600)
+cached = cache.get(model="qwen", prompt="classify: hello")
+if not cached:
+    result = model.generate(...)
+    cache.set(model="qwen", prompt="classify: hello", response=result)
+```
+
+---
+
+## 27. Canary Deploy и A/B Testing
+
+### Canary (постепенный деплой):
+
+```python
+from llm_forge.deployment.canary import CanaryDeployer
+
+deployer = CanaryDeployer(
+    primary_endpoint="http://model-v1:8080",
+    canary_endpoint="http://model-v2:8080",
+    canary_weight=0.1,         # 10% трафика на canary
+    error_threshold=0.05,      # откат при >5% ошибок
+    promote_after=1000          # автопромоут после 1000 запросов
+)
+
+target = deployer.route()  # "primary" или "canary"
+```
+
+### A/B Testing:
+
+```python
+from llm_forge.deployment.canary import ABTester
+
+tester = ABTester(variants={"model-a": 0.5, "model-b": 0.5})
+variant = tester.route()
+# ... получить результат ...
+tester.record_metric(variant, accuracy)
+
+results = tester.get_results()
+# {"model-a": {"mean": 0.87, "samples": 500}, "model-b": {"mean": 0.91, ...}, "winner": "model-b"}
+```
+
+---
+
+## 28. Human Feedback (обратная связь)
+
+Сбор фидбэка от пользователей (thumbs up/down) с автоматической генерацией DPO-пар:
+
+```python
+from llm_forge.feedback import FeedbackCollector
+
+collector = FeedbackCollector()
+collector.record(prompt="...", response="...", rating="positive")  # или "negative"
+
+# Экспорт в DPO-пары для дообучения
+dpo_pairs = collector.export_dpo_pairs()
+```
+
+Замкнутый цикл: feedback → DPO pairs → DPO training → улучшенная модель.
+
+---
+
+## 29. Settings и Authentication
+
+### UI
+
+Откройте страницу **Settings** (или `/settings`):
+- Информация о сервере (версия, auth status)
+- Управление API-ключами (создание, отзыв)
+- Информация о hardware
+
+### Включение аутентификации:
+
+1. Установите в `.env`:
+   ```bash
+   FORGE_AUTH_ENABLED=true
+   ```
+
+2. Перезапустите backend
+
+3. Сгенерируйте API-ключ:
+   ```bash
+   curl -X POST http://localhost:8888/api/v1/settings/keys \
+     -d '{"name": "my-key"}'
+   ```
+   Ответ содержит plaintext ключ (показывается только раз): `forge_<32-символа>`.
+
+4. Используйте ключ в запросах:
+   ```bash
+   curl -H "Authorization: Bearer forge_xxxxx" http://localhost:8888/api/v1/experiments
+   ```
+
+Публичные эндпоинты (не требуют ключа): `/api/v1/health`, `/docs`, `/openapi.json`, `/redoc`.
+
+### Rate Limiting:
+
+Встроенный rate limiter: 60 запросов/минуту на IP (через `slowapi`).
+
+---
+
+## Полный справочник CLI
+
+```
+forge train <config.yaml> [key=val ...]     Обучение (SFT/DPO)
+  --task sft|dpo|auto                        Тип задачи
+  --base-model PATH                          Базовая модель
+  --resume PATH                              Продолжить с чекпоинта
+
+forge eval --model PATH --test-data PATH    Оценка модели
+  --batch-size N                             Размер батча
+  --output PATH                              Путь для результатов
+
+forge export --model PATH --format FMT      Экспорт модели
+  --format gguf|merged|hub                   Формат экспорта
+  --quant q4_k_m|q8_0|f16                    Квантизация (для GGUF)
+
+forge serve --model PATH --port PORT        Запуск inference API
+  --backend llamacpp|vllm                    Бэкенд
+
+forge init <name>                           Создать конфиг эксперимента
+  --task sft|dpo                              Тип задачи
+  --model qwen3.5-0.8b|llama3.2-1b|...       Модель
+
+forge info                                  Информация о hardware
+forge ui [--port 8888]                      Запуск Web UI
+
+forge sweep <config> <sweep_config>         HPO sweep
+  --n-trials N                               Кол-во trials
+  --name NAME                                Имя study
+
+forge agent init <name>                     Создать конфиг агента
+forge agent test <config.yaml>              Тест агента (REPL)
+forge agent serve <config.yaml>             Деплой агента как API
+
+forge pipeline run <config.yaml>            Запуск pipeline
+forge pipeline list                         Список прошлых pipeline-запусков
+
+forge runs list [--project X] [--status Y]  Список запусков
+forge runs show <run_id>                    Детали запуска
+forge runs compare <id1> <id2> ...          Сравнение запусков
+
+forge registry list [--status X]            Список моделей в реестре
+forge registry register <name> --model-path Зарегистрировать модель
+forge registry promote <id> <status>        Изменить статус модели
 ```
 
 ---
@@ -380,14 +1279,50 @@ llm-forge/
     models/                # Конфиги моделей (qwen, llama, mistral)
     tasks/                 # Конфиги задач (sft, dpo, eval)
     examples/              # Готовые эксперименты
-  data/                    # Датасеты (.csv, .jsonl)
+    agents/                # Конфиги агентов
+    pipelines/             # Конфиги pipeline
+  data/
+    uploads/               # Загруженные датасеты
+    workflows.json         # Сохранённые workflow
+    model_registry.json    # Реестр моделей
+    api_keys.json          # Хешированные API-ключи
+    sweeps/                # Результаты HPO
+    experiments.json       # Хранилище экспериментов
   prompts/                 # System prompts
-  outputs/                 # Результаты обучения (адаптеры, модели)
-  src/llm_forge/           # Python backend
+  outputs/                 # Результаты обучения (адаптеры, модели, чекпоинты)
+  src/llm_forge/
+    training/              # SFT, DPO тренеры
+    evaluation/            # Eval + LLM-as-Judge
+    export/                # GGUF, merged, hub
+    serving/               # vLLM, llama.cpp
+    agent/                 # Агентский фреймворк
+    protocols/             # MCP, A2A, Gateway
+    guardrails/            # Защитные механизмы
+    deployment/            # Canary, A/B testing
+    hpo/                   # Optuna sweeps
+    pipeline/              # Pipeline executor
+    observability/         # Трейсинг
+    compute/               # SSH, remote targets
+    ui/                    # FastAPI routes, middleware
+    cli.py                 # CLI entry point
   ui/                      # React frontend
   scripts/                 # Утилиты (run_eval.py и др.)
+  docs/                    # Документация
   .env                     # Переменные окружения (не в git!)
 ```
+
+---
+
+## Переменные окружения
+
+| Переменная | По умолчанию | Описание |
+|-----------|-------------|----------|
+| `OPENAI_API_KEY` | — | Ключ для Co-pilot (LLM-режим) и Site Chat |
+| `FORGE_AUTH_ENABLED` | `false` | Включить аутентификацию API |
+| `FORGE_CORS_ORIGINS` | `localhost:3000,8888` | Разрешённые CORS origins |
+| `HF_TOKEN` | — | HuggingFace токен (для gated-моделей) |
+
+---
 
 ## Troubleshooting
 
@@ -411,3 +1346,16 @@ llm-forge/
 ### Тренировка зависает
 - Проверьте `nvidia-smi` — GPU должен быть загружен
 - Проверьте логи backend: `tail -f backend.log`
+
+### Pipeline шаг пропущен
+- Проверьте `condition` в конфиге шага — возможно метрика не достигла порога
+- Проверьте `depends_on` — все зависимости должны завершиться успешно
+
+### API возвращает 401 Unauthorized
+- Проверьте что `FORGE_AUTH_ENABLED=true` в `.env`
+- Убедитесь что передаёте заголовок `Authorization: Bearer forge_xxxxx`
+- Сгенерируйте новый ключ если старый утерян
+
+### HPO sweep не запускается
+- Установите зависимость: `pip install -e ".[hpo]"`
+- Проверьте формат `search_space` в sweep конфиге

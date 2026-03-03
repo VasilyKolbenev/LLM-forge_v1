@@ -1,0 +1,120 @@
+site_name: llm-forge
+site_description: Универсальный пайплайн файнтюнинга LLM с Web UI
+repo_url: https://github.com/your-org/llm-forge
+repo_name: llm-forge
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site/docs
+
+theme:
+  name: material
+  language: ru
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-7
+        name: Тёмная тема
+    - scheme: slate
+      primary: indigo
+      accent: blue
+      toggle:
+        icon: material/brightness-4
+        name: Светлая тема
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - search.share
+    - search.suggest
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+plugins:
+  - search:
+      lang: ru
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Главная: index.md
+  - С чего начать:
+      - Быстрый старт: getting-started/quickstart.md
+      - Установка: getting-started/installation.md
+      - Первый эксперимент: getting-started/first-experiment.md
+  - Руководства:
+      - Обучение:
+          - SFT (Supervised Fine-Tuning): guides/training/sft.md
+          - DPO (Direct Preference Optimization): guides/training/dpo.md
+          - Стратегии и железо: guides/training/hardware-strategy.md
+          - Наследование конфигов: guides/training/config-inheritance.md
+      - Оценка модели: guides/evaluation.md
+      - Экспорт: guides/export.md
+      - Сервинг: guides/serving.md
+      - Датасеты: guides/datasets.md
+      - Workflow Builder: guides/workflow-builder.md
+      - Pipeline Execution: guides/pipeline.md
+      - Prompt Lab: guides/prompt-lab.md
+      - HPO / Sweep: guides/hpo.md
+      - Эксперименты: guides/experiment-tracking.md
+      - Мониторинг: guides/monitoring.md
+      - Реестр моделей: guides/model-registry.md
+      - Compute: guides/compute.md
+      - Co-pilot: guides/copilot.md
+      - Agent Framework: guides/agents.md
+      - Guardrails: guides/guardrails.md
+      - Протоколы (MCP / A2A / Gateway): guides/protocols.md
+      - Observability: guides/observability.md
+      - Canary / A-B Testing: guides/canary-ab.md
+      - Human Feedback: guides/human-feedback.md
+      - Настройки и Auth: guides/settings-auth.md
+  - Справочник:
+      - CLI: reference/cli.md
+      - Конфигурация YAML: reference/config.md
+      - REST API: reference/api.md
+      - Переменные окружения: reference/env-vars.md
+  - Туториалы:
+      - "Intent Classifier (E2E)": tutorials/intent-classifier.md
+      - "Чатбот с DPO": tutorials/chatbot-dpo.md
+      - "Train \u2192 GGUF \u2192 Serve": tutorials/gguf-serving.md
+      - "Полный Pipeline": tutorials/full-pipeline.md
+      - "Агент с инструментами": tutorials/agent-with-tools.md
+  - Концепции:
+      - Архитектура: concepts/architecture.md
+      - LoRA и QLoRA: concepts/lora-qlora.md
+      - Стратегии обучения: concepts/training-strategies.md

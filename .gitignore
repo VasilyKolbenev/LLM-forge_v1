@@ -38,6 +38,9 @@ data/
 *.jsonl
 *.parquet
 
+# MkDocs build output
+site/docs/
+
 # Logs
 *.log
 wandb/
