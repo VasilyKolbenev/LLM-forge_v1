@@ -68,6 +68,42 @@ def load_model(
     return model, tokenizer
 
 
+def _resolve_model_class(model_name: str) -> Any:
+    """Resolve the correct model class, handling multimodal architectures.
+
+    Qwen 3.5 models use Qwen3_5ForConditionalGeneration with a nested
+    language_model prefix. AutoModelForCausalLM resolves to Qwen3_5ForCausalLM
+    which expects different weight names and produces random outputs.
+
+    Args:
+        model_name: HuggingFace model name or path.
+
+    Returns:
+        Model class to use for from_pretrained().
+    """
+    from transformers import AutoConfig, AutoModelForCausalLM
+
+    try:
+        hf_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+        architectures = getattr(hf_config, "architectures", []) or []
+        if any("ConditionalGeneration" in a for a in architectures):
+            import transformers
+
+            arch_name = architectures[0]
+            cls = getattr(transformers, arch_name, None)
+            if cls is not None:
+                logger.info(
+                    "Detected multimodal architecture %s, using %s",
+                    arch_name,
+                    cls.__name__,
+                )
+                return cls
+    except Exception:
+        logger.debug("Could not resolve architecture for %s", model_name, exc_info=True)
+
+    return AutoModelForCausalLM
+
+
 def _ensure_pad_token(tokenizer: Any) -> None:
     """Set pad_token to eos_token if not already set.
 
@@ -129,12 +165,13 @@ def _load_hf_with_adapter(
         Tuple of (model, tokenizer).
     """
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from transformers import AutoTokenizer
     from peft import PeftModel
 
     bnb_config = _get_bnb_config(config)
+    model_cls = _resolve_model_class(base_name)
 
-    base_model = AutoModelForCausalLM.from_pretrained(
+    base_model = model_cls.from_pretrained(
         base_name,
         quantization_config=bnb_config,
         device_map="auto",
@@ -179,11 +216,12 @@ def _load_hf_base(config: dict, model_name: str) -> tuple[Any, Any]:
         Tuple of (model, tokenizer).
     """
     import torch
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from transformers import AutoTokenizer
 
     bnb_config = _get_bnb_config(config)
+    model_cls = _resolve_model_class(model_name)
 
-    model = AutoModelForCausalLM.from_pretrained(
+    model = model_cls.from_pretrained(
         model_name,
         quantization_config=bnb_config,
         device_map="auto" if not config.get("fsdp_enabled") else None,

@@ -186,13 +186,20 @@ def _train_sft_unsloth(config: dict, callbacks: list | None = None) -> dict:
     logger.info("LoRA adapter saved to %s", adapter_dir)
 
     vram_peak = torch.cuda.max_memory_allocated() / (1024**3)
-    return {
+    results = {
         "training_loss": stats.training_loss,
         "global_steps": stats.global_step,
         "vram_peak_gb": round(vram_peak, 2),
         "output_dir": output_dir,
         "adapter_dir": adapter_dir,
     }
+
+    # Auto-eval on test split
+    eval_results = _auto_eval(model, tokenizer, config)
+    if eval_results:
+        results["eval_results"] = eval_results
+
+    return results
 
 
 def _train_sft_hf(config: dict, callbacks: list | None = None) -> dict:
@@ -324,16 +331,25 @@ def _train_sft_hf(config: dict, callbacks: list | None = None) -> dict:
     tokenizer.save_pretrained(adapter_dir)
     logger.info("Model saved to %s", adapter_dir)
 
-    return {
+    results = {
         "training_loss": stats.training_loss,
         "global_steps": stats.global_step,
         "output_dir": output_dir,
         "adapter_dir": adapter_dir,
     }
 
+    # Auto-eval on test split
+    eval_results = _auto_eval(model, tokenizer, config)
+    if eval_results:
+        results["eval_results"] = eval_results
+
+    return results
+
 
 def _load_train_dataset(config: dict, tokenizer: Any) -> Any:
     """Load and format training dataset from config.
+
+    Stores test_df in config["_test_df"] for post-training eval.
 
     Args:
         config: Full config dict.
@@ -362,6 +378,10 @@ def _load_train_dataset(config: dict, tokenizer: Any) -> Any:
     )
     train_df = splits["train"]
 
+    # Store test split for auto-eval after training
+    if "test" in splits and len(splits["test"]) > 0:
+        config["_test_df"] = splits["test"]
+
     # System prompt
     system_prompt = ""
     prompt_file = ds_config.get("system_prompt_file")
@@ -380,3 +400,78 @@ def _load_train_dataset(config: dict, tokenizer: Any) -> Any:
     )
 
     return apply_chat_template(examples, tokenizer)
+
+
+def _auto_eval(
+    model: Any,
+    tokenizer: Any,
+    config: dict,
+) -> dict | None:
+    """Run evaluation on test split after training.
+
+    Args:
+        model: Trained model (with LoRA adapter applied).
+        tokenizer: Tokenizer.
+        config: Config dict (must have _test_df from _load_train_dataset).
+
+    Returns:
+        Eval results dict or None if no test data.
+    """
+    test_df = config.get("_test_df")
+    if test_df is None or len(test_df) == 0:
+        logger.info("No test split available, skipping auto-eval")
+        return None
+
+    ds_config = config.get("dataset", {})
+    label_columns = ds_config.get("label_columns", ["label"])
+    text_column = ds_config.get("text_column", "phrase")
+
+    # Get system prompt
+    from llm_forge.data.formatter import load_system_prompt
+
+    system_prompt = ""
+    if ds_config.get("system_prompt_file"):
+        system_prompt = load_system_prompt(ds_config["system_prompt_file"])
+    elif ds_config.get("system_prompt"):
+        system_prompt = ds_config["system_prompt"]
+
+    logger.info("Running auto-eval on %d test samples...", len(test_df))
+
+    from llm_forge.evaluation.runner import _batch_inference
+    from llm_forge.evaluation.metrics import compute_metrics, compute_f1
+
+    predictions = _batch_inference(
+        model=model,
+        tokenizer=tokenizer,
+        test_df=test_df,
+        system_prompt=system_prompt,
+        text_column=text_column,
+        max_new_tokens=128,
+    )
+
+    true_labels = []
+    for _, row in test_df.iterrows():
+        true_labels.append({col: row[col] for col in label_columns if col in row})
+
+    results = compute_metrics(
+        predictions=predictions,
+        true_labels=true_labels,
+        label_columns=label_columns,
+    )
+
+    # Add F1 for primary column
+    if label_columns:
+        f1_results = compute_f1(
+            predictions=predictions,
+            true_labels=true_labels,
+            column=label_columns[0],
+            average="weighted",
+        )
+        results["f1_weighted"] = f1_results
+
+    logger.info(
+        "Auto-eval: accuracy=%.1f%%, parse_rate=%.1f%%",
+        results.get("overall_accuracy", 0) * 100,
+        results.get("json_parse_rate", 0) * 100,
+    )
+    return results

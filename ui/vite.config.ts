@@ -18,6 +18,14 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    watch: {
+      usePolling: true,
+      interval: 1000,
+      ignored: ['**/node_modules/**', '**/.git/**', '**/outputs/**', '**/.vite/**'],
+    },
+    hmr: {
+      overlay: false,
+    },
   },
   build: {
     outDir: '../src/llm_forge/ui/static',

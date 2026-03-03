@@ -3,8 +3,12 @@
 Serves both the REST API and static React frontend.
 """
 
+from dotenv import load_dotenv
+load_dotenv()  # Load .env before anything reads env vars
+
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -36,6 +40,16 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI):  # noqa: ARG001
+    """FastAPI lifespan: startup and shutdown hooks."""
+    logger.info("llm-forge backend starting up")
+    yield
+    logger.info("llm-forge backend shutting down, cleaning up...")
+    from llm_forge.ui.jobs import shutdown_executor
+    shutdown_executor()
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -46,6 +60,7 @@ def create_app() -> FastAPI:
         title="llm-forge",
         description="LLM fine-tuning dashboard",
         version="0.1.0",
+        lifespan=_lifespan,
     )
 
     # CORS: configurable via FORGE_CORS_ORIGINS env var (comma-separated)
