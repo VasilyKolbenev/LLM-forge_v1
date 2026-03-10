@@ -50,6 +50,17 @@ runs/
 .env
 *.key
 
+# Node
+node_modules/
+
+# Vite cache
+.vite/
+
+# Temp dirs
+.codex-pytest-tmp/
+.pytest-tmp/
+.tmp/
+
 # Claude Code
 .claude/
 .env.*.local
