@@ -15,7 +15,7 @@ dataset:
   system_prompt_file: prompts/cam_taxonomy.txt
 
 dpo:
-  pairs_path: ./data/cam_dpo_pairs.jsonl
+  pairs_path: ./data/cam_dpo_pairs_clean.jsonl
   beta: 0.1
 
 training:
@@ -23,4 +23,4 @@ training:
   learning_rate: 0.00005
 
 output:
-  dir: ./outputs/cam-dpo-qwen3.5-2b
+  dir: ./outputs/cam-dpo-qwen3.5-2b-v2
