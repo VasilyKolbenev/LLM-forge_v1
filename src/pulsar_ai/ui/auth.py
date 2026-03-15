@@ -4,7 +4,7 @@ Provides:
 - ApiKeyStore: JSON-based hashed key storage
 - ApiKeyMiddleware: FastAPI middleware for Bearer token auth
 
-Enable via FORGE_AUTH_ENABLED=true environment variable.
+Enable via PULSAR_AUTH_ENABLED=true environment variable.
 """
 
 import hashlib

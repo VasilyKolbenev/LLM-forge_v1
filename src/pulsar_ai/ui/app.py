@@ -34,7 +34,7 @@ from pulsar_ai.ui.routes.protocols import router as protocols_router
 from pulsar_ai.ui.routes.pipeline_run import router as pipeline_run_router
 from pulsar_ai.ui.routes.site_chat import router as site_chat_router
 
-_env_file = os.environ.get("FORGE_ENV_FILE", "").strip()
+_env_file = os.environ.get("PULSAR_ENV_FILE", "").strip()
 if _env_file:
     load_dotenv(_env_file)  # Load explicit env profile when provided
 else:
@@ -69,10 +69,10 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
 
-    stand_mode = os.environ.get("FORGE_STAND_MODE", "dev").strip() or "dev"
+    stand_mode = os.environ.get("PULSAR_STAND_MODE", "dev").strip() or "dev"
 
-    # CORS: configurable via FORGE_CORS_ORIGINS env var (comma-separated)
-    cors_env = os.environ.get("FORGE_CORS_ORIGINS", "")
+    # CORS: configurable via PULSAR_CORS_ORIGINS env var (comma-separated)
+    cors_env = os.environ.get("PULSAR_CORS_ORIGINS", "")
     cors_origins = (
         [o.strip() for o in cors_env.split(",") if o.strip()]
         if cors_env
@@ -86,8 +86,8 @@ def create_app() -> FastAPI:
         allow_headers=["Content-Type", "Authorization"],
     )
 
-    # API key authentication (opt-in via FORGE_AUTH_ENABLED=true)
-    auth_enabled = os.environ.get("FORGE_AUTH_ENABLED", "false").lower() == "true"
+    # API key authentication (opt-in via PULSAR_AUTH_ENABLED=true)
+    auth_enabled = os.environ.get("PULSAR_AUTH_ENABLED", "false").lower() == "true"
     key_store = ApiKeyStore()
     if auth_enabled:
         app.add_middleware(ApiKeyMiddleware, key_store=key_store, enabled=True)

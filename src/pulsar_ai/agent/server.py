@@ -33,7 +33,7 @@ def _get_app() -> Any:
         ) from e
 
     _app = FastAPI(
-        title="LLM Forge Agent Server",
+        title="Pulsar AI Agent Server",
         description="REST API for interacting with fine-tuned LLM agents",
         version="0.1.0",
     )
@@ -71,7 +71,7 @@ def create_agent_app(config: dict) -> Any:
     from pulsar_ai.agent.memory import ShortTermMemory
 
     app = FastAPI(
-        title="LLM Forge Agent Server",
+        title="Pulsar AI Agent Server",
         description="REST API for interacting with fine-tuned LLM agents",
         version="0.1.0",
     )

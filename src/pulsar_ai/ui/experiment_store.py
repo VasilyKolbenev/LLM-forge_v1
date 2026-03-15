@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_JSON_PATH = Path("./data/experiments.json")
 try:
     DEFAULT_STALE_RUNNING_MINUTES = int(
-        os.environ.get("FORGE_STALE_RUNNING_MINUTES", "90")
+        os.environ.get("PULSAR_STALE_RUNNING_MINUTES", "90")
     )
 except ValueError:
     DEFAULT_STALE_RUNNING_MINUTES = 90

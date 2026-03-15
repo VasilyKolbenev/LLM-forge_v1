@@ -1,4 +1,4 @@
-﻿"""CLI entrypoint for Pulsar AI: forge train/eval/export/serve."""
+﻿"""CLI entrypoint for Pulsar AI: pulsar train/eval/export/serve."""
 
 import logging
 import sys
@@ -94,9 +94,9 @@ def train(
 
     \b
     Examples:
-        forge train experiments/cam-sft.yaml
-        forge train experiments/cam-dpo.yaml --task dpo --base-model ./outputs/cam-sft
-        forge train experiments/cam-sft.yaml learning_rate=1e-4 epochs=5
+        pulsar train experiments/cam-sft.yaml
+        pulsar train experiments/cam-dpo.yaml --task dpo --base-model ./outputs/cam-sft
+        pulsar train experiments/cam-sft.yaml learning_rate=1e-4 epochs=5
     """
     from pulsar_ai.config import load_config
 
@@ -241,8 +241,8 @@ def evaluate(
 
     \b
     Examples:
-        forge eval --model ./outputs/cam-sft/lora --test-data data/test.csv
-        forge eval --model ./outputs/cam-sft/lora --test-data data/test.csv --output reports/
+        pulsar eval --model ./outputs/cam-sft/lora --test-data data/test.csv
+        pulsar eval --model ./outputs/cam-sft/lora --test-data data/test.csv --output reports/
     """
     from pulsar_ai.config import load_config
 
@@ -307,9 +307,9 @@ def export(
 
     \b
     Examples:
-        forge export --model ./outputs/cam-sft/lora --format gguf --quant q4_k_m
-        forge export --model ./outputs/cam-sft/lora --format merged --output ./merged/
-        forge export --model ./outputs/cam-sft/lora --format hub
+        pulsar export --model ./outputs/cam-sft/lora --format gguf --quant q4_k_m
+        pulsar export --model ./outputs/cam-sft/lora --format merged --output ./merged/
+        pulsar export --model ./outputs/cam-sft/lora --format hub
     """
     from pulsar_ai.config import load_config
 
@@ -365,8 +365,8 @@ def serve(model: str, port: int, backend: str, host: str) -> None:
 
     \b
     Examples:
-        forge serve --model ./outputs/model.gguf --port 8080
-        forge serve --model ./outputs/cam-sft --backend vllm --port 8000
+        pulsar serve --model ./outputs/model.gguf --port 8080
+        pulsar serve --model ./outputs/cam-sft --backend vllm --port 8000
     """
     console.print(
         Panel(f"Starting [bold]{backend}[/bold] server on {host}:{port}")
@@ -407,8 +407,8 @@ def init(name: str, task: str, model: str, output_dir: Optional[str]) -> None:
 
     \b
     Examples:
-        forge init my-classifier
-        forge init my-classifier --task dpo --model llama3.2-1b
+        pulsar init my-classifier
+        pulsar init my-classifier --task dpo --model llama3.2-1b
     """
     import yaml
 
@@ -454,7 +454,7 @@ def init(name: str, task: str, model: str, output_dir: Optional[str]) -> None:
     console.print(Panel(
         f"[green]Created:[/green] {config_path}\n"
         f"[dim]Edit dataset.path and label_columns, then run:[/dim]\n"
-        f"  forge train {config_path}",
+        f"  pulsar train {config_path}",
         title=f"New Experiment: {name}",
     ))
 
@@ -465,7 +465,7 @@ def info() -> None:
 
     \b
     Examples:
-        forge info
+        pulsar info
     """
     from pulsar_ai.hardware import detect_hardware
 
@@ -514,8 +514,8 @@ def agent_init(name: str, model_url: str, model_name: str) -> None:
 
     \b
     Examples:
-        forge agent init my-assistant
-        forge agent init code-helper --model-url http://localhost:11434/v1
+        pulsar agent init my-assistant
+        pulsar agent init code-helper --model-url http://localhost:11434/v1
     """
     import yaml
 
@@ -558,7 +558,7 @@ def agent_init(name: str, model_url: str, model_name: str) -> None:
     console.print(Panel(
         f"[green]Created:[/green] {config_path}\n"
         f"[dim]Edit the config, then run:[/dim]\n"
-        f"  forge agent test {config_path}",
+        f"  pulsar agent test {config_path}",
         title=f"New Agent: {name}",
     ))
 
@@ -571,8 +571,8 @@ def agent_test(config_path: str, native_tools: bool) -> None:
 
     \b
     Examples:
-        forge agent test configs/agents/my-assistant.yaml
-        forge agent test configs/agents/my-assistant.yaml --native-tools
+        pulsar agent test configs/agents/my-assistant.yaml
+        pulsar agent test configs/agents/my-assistant.yaml --native-tools
     """
     from pulsar_ai.agent.loader import load_agent_config
     from pulsar_ai.agent.base import BaseAgent
@@ -635,8 +635,8 @@ def agent_serve(config_path: str, host: str, port: int) -> None:
 
     \b
     Examples:
-        forge agent serve configs/agents/my-assistant.yaml
-        forge agent serve configs/agents/my-assistant.yaml --port 9000
+        pulsar agent serve configs/agents/my-assistant.yaml
+        pulsar agent serve configs/agents/my-assistant.yaml --port 9000
     """
     from pulsar_ai.agent.loader import load_agent_config
     from pulsar_ai.agent.server import start_agent_server
@@ -673,8 +673,8 @@ def ui(host: str, port: int) -> None:
 
     \b
     Examples:
-        forge ui
-        forge ui --port 9000
+        pulsar ui
+        pulsar ui --port 9000
     """
     from pulsar_ai.ui.app import start_ui_server
 
@@ -704,7 +704,7 @@ def pipeline_run(config_path: str) -> None:
 
     \b
     Examples:
-        forge pipeline run configs/pipelines/example.yaml
+        pulsar pipeline run configs/pipelines/example.yaml
     """
     import yaml
 
@@ -753,8 +753,8 @@ def pipeline_list(name: str | None) -> None:
 
     \b
     Examples:
-        forge pipeline list
-        forge pipeline list --name full-pipeline
+        pulsar pipeline list
+        pulsar pipeline list --name full-pipeline
     """
     from pulsar_ai.pipeline.tracker import PipelineTracker
 
@@ -806,8 +806,8 @@ def runs_list(project: str | None, status: str | None, limit: int) -> None:
 
     \b
     Examples:
-        forge runs list
-        forge runs list --status completed --limit 10
+        pulsar runs list
+        pulsar runs list --status completed --limit 10
     """
     from pulsar_ai.tracking import list_runs
 
@@ -851,7 +851,7 @@ def runs_show(run_id: str) -> None:
 
     \b
     Examples:
-        forge runs show abc123def456
+        pulsar runs show abc123def456
     """
     from pulsar_ai.tracking import get_run
 
@@ -901,8 +901,8 @@ def runs_compare(run_ids: tuple[str, ...]) -> None:
 
     \b
     Examples:
-        forge runs compare abc123 def456
-        forge runs compare run1 run2 run3
+        pulsar runs compare abc123 def456
+        pulsar runs compare run1 run2 run3
     """
     from pulsar_ai.tracking import compare_runs
 
@@ -959,8 +959,8 @@ def sweep(
 
     \b
     Examples:
-        forge sweep configs/experiments/sft.yaml configs/sweeps/lr-search.yaml
-        forge sweep configs/experiments/sft.yaml configs/sweeps/full.yaml --n-trials 30
+        pulsar sweep configs/experiments/sft.yaml configs/sweeps/lr-search.yaml
+        pulsar sweep configs/experiments/sft.yaml configs/sweeps/full.yaml --n-trials 30
     """
     from pulsar_ai.hpo.sweep import SweepRunner, load_sweep_config
 
@@ -1014,8 +1014,8 @@ def registry_list(name: str | None, status: str | None) -> None:
 
     \b
     Examples:
-        forge registry list
-        forge registry list --name customer-intent --status production
+        pulsar registry list
+        pulsar registry list --name customer-intent --status production
     """
     from pulsar_ai.registry import ModelRegistry
 
@@ -1072,7 +1072,7 @@ def registry_register(
 
     \b
     Examples:
-        forge registry register customer-intent --model-path ./outputs/sft/lora --base-model qwen2.5-3b
+        pulsar registry register customer-intent --model-path ./outputs/sft/lora --base-model qwen2.5-3b
     """
     from pulsar_ai.registry import ModelRegistry
 
@@ -1100,7 +1100,7 @@ def registry_promote(model_id: str, status: str) -> None:
 
     \b
     Examples:
-        forge registry promote customer-intent-v2 production
+        pulsar registry promote customer-intent-v2 production
     """
     from pulsar_ai.registry import ModelRegistry
 

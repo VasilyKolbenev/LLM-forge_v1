@@ -34,7 +34,7 @@ class AgentCard:
     """
 
     name: str = "pulsar-ai-agent"
-    description: str = "LLM Forge AI Agent"
+    description: str = "Pulsar AI AI Agent"
     url: str = ""
     version: str = "1.0.0"
     skills: list[dict[str, str]] = field(default_factory=list)

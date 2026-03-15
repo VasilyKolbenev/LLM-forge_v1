@@ -11,9 +11,9 @@ class TestCorsConfiguration:
     """Tests for CORS origin configuration."""
 
     def test_default_cors_allows_localhost(self):
-        """Without FORGE_CORS_ORIGINS, localhost origins get CORS headers."""
+        """Without PULSAR_CORS_ORIGINS, localhost origins get CORS headers."""
         with patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("FORGE_CORS_ORIGINS", None)
+            os.environ.pop("PULSAR_CORS_ORIGINS", None)
             from pulsar_ai.ui.app import create_app
             from fastapi.testclient import TestClient
 
@@ -31,7 +31,7 @@ class TestCorsConfiguration:
     def test_default_cors_blocks_unknown_origin(self):
         """Unknown origins should not get CORS allow header."""
         with patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("FORGE_CORS_ORIGINS", None)
+            os.environ.pop("PULSAR_CORS_ORIGINS", None)
             from pulsar_ai.ui.app import create_app
             from fastapi.testclient import TestClient
 
@@ -49,10 +49,10 @@ class TestCorsConfiguration:
             assert "evil.com" not in allow_origin
 
     def test_custom_cors_from_env(self):
-        """FORGE_CORS_ORIGINS overrides default origins."""
+        """PULSAR_CORS_ORIGINS overrides default origins."""
         with patch.dict(
             os.environ,
-            {"FORGE_CORS_ORIGINS": "https://app.example.com,https://admin.example.com"},
+            {"PULSAR_CORS_ORIGINS": "https://app.example.com,https://admin.example.com"},
         ):
             from pulsar_ai.ui.app import create_app
             from fastapi.testclient import TestClient

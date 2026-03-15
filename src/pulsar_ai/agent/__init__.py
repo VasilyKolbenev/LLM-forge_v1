@@ -1,4 +1,4 @@
-"""LLM Forge Agent System — build tool-calling agents on fine-tuned models."""
+"""Pulsar AI Agent System — build tool-calling agents on fine-tuned models."""
 
 from pulsar_ai.agent.tool import Tool, ToolRegistry, tool
 from pulsar_ai.agent.client import ModelClient

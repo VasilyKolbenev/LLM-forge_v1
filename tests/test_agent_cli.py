@@ -15,7 +15,7 @@ def runner() -> CliRunner:
 
 
 class TestAgentInit:
-    """Tests for forge agent init command."""
+    """Tests for pulsar agent init command."""
 
     def test_creates_agent_config(self, runner: CliRunner, tmp_path: Path) -> None:
         with runner.isolated_filesystem(temp_dir=tmp_path):

@@ -1,8 +1,8 @@
-"""Forge Co-pilot — AI assistant with platform management tools.
+"""Pulsar Co-pilot — AI assistant with platform management tools.
 
 Two operating modes:
 - Command Mode: slash-commands (/status, /train, /workflows, etc.) — always available
-- LLM Mode: GPT-4o-mini agent with 14 forge tools — when OPENAI_API_KEY is set
+- LLM Mode: GPT-4o-mini agent with 14 pulsar tools — when OPENAI_API_KEY is set
 """
 
 import json
@@ -28,14 +28,14 @@ _sessions: dict[str, dict[str, Any]] = {}
 
 
 # ──────────────────────────────────────────────────────────
-# Forge Tools — call backend in-process (no HTTP)
+# Pulsar Tools — call backend in-process (no HTTP)
 # ──────────────────────────────────────────────────────────
 
-def _get_forge_tools() -> ToolRegistry:
-    """Create a ToolRegistry with all forge platform tools.
+def _get_pulsar_tools() -> ToolRegistry:
+    """Create a ToolRegistry with all pulsar platform tools.
 
     Returns:
-        ToolRegistry with 14 forge tools.
+        ToolRegistry with 14 pulsar tools.
     """
     registry = ToolRegistry()
 
@@ -463,7 +463,7 @@ def parse_command(message: str) -> dict[str, Any] | None:
     args_str = (match.group(2) or "").strip()
     kwargs = dict(_KV_PATTERN.findall(args_str))
 
-    tools = _get_forge_tools()
+    tools = _get_pulsar_tools()
     results = []
 
     if cmd == "help":
@@ -560,7 +560,7 @@ def _get_or_create_session(session_id: str | None) -> tuple[str, list[dict]]:
 
 
 def _build_system_prompt(context: dict | None = None) -> str:
-    """Build the system prompt for the Forge Co-pilot.
+    """Build the system prompt for the Pulsar Co-pilot.
 
     Args:
         context: Optional UI context with page, active_jobs.
@@ -583,9 +583,9 @@ def _build_system_prompt(context: dict | None = None) -> str:
     ctx_block = "\n".join(ctx_lines)
 
     return (
-        "You are Forge Co-pilot, the built-in AI assistant for the LLM Forge platform.\n\n"
+        "You are Pulsar Co-pilot, the built-in AI assistant for the Pulsar AI platform.\n\n"
         "## Platform Overview\n"
-        "LLM Forge is a self-hosted, open-source platform for the full LLM lifecycle:\n"
+        "Pulsar AI is a self-hosted, open-source platform for the full LLM lifecycle:\n"
         "- 26 visual workflow node types in 7 categories: Data, Training, Agent, "
         "Protocols, Safety, Evaluation, Ops\n"
         "- Visual DAG pipeline builder for orchestrating multi-step ML workflows\n"
@@ -635,7 +635,7 @@ def _run_llm_mode(
     session_id: str,
     context: dict | None = None,
 ) -> dict[str, Any]:
-    """Run the assistant in LLM mode with forge tools via OpenAI API.
+    """Run the assistant in LLM mode with pulsar tools via OpenAI API.
 
     Args:
         message: User message.
@@ -651,7 +651,7 @@ def _run_llm_mode(
     from pulsar_ai.agent.memory import ShortTermMemory
     from pulsar_ai.agent.guardrails import GuardrailsConfig
 
-    tools = _get_forge_tools()
+    tools = _get_pulsar_tools()
     system_prompt = _build_system_prompt(context)
 
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
@@ -722,7 +722,7 @@ class StatusResponse(BaseModel):
 
 @router.post("/assistant/chat", response_model=ChatResponse)
 async def assistant_chat(req: ChatRequest) -> ChatResponse:
-    """Chat with the Forge Co-pilot.
+    """Chat with the Pulsar Co-pilot.
 
     Routes to command mode or LLM mode depending on input.
     """

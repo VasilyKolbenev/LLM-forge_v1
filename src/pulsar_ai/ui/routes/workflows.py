@@ -46,7 +46,7 @@ _TEMPLATES: dict[str, dict] = {
                 "data": {
                     "label": "Intake Agent",
                     "config": {
-                        "framework": "forge-react",
+                        "framework": "pulsar-react",
                         "agent_role": "intake",
                         "risk_level": "low",
                         "requires_approval": False,
@@ -61,7 +61,7 @@ _TEMPLATES: dict[str, dict] = {
                 "data": {
                     "label": "KYC AML Agent",
                     "config": {
-                        "framework": "forge-react",
+                        "framework": "pulsar-react",
                         "agent_role": "kyc_aml",
                         "risk_level": "high",
                         "requires_approval": True,
@@ -76,7 +76,7 @@ _TEMPLATES: dict[str, dict] = {
                 "data": {
                     "label": "Risk Scoring Agent",
                     "config": {
-                        "framework": "forge-react",
+                        "framework": "pulsar-react",
                         "agent_role": "risk_scoring",
                         "risk_level": "high",
                         "requires_approval": True,
@@ -106,7 +106,7 @@ _TEMPLATES: dict[str, dict] = {
                 "data": {
                     "label": "Credit Decision Agent",
                     "config": {
-                        "framework": "forge-react",
+                        "framework": "pulsar-react",
                         "agent_role": "decision",
                         "risk_level": "critical",
                         "requires_approval": True,

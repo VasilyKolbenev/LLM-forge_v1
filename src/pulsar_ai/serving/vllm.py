@@ -35,8 +35,8 @@ def start_server(
     if model_dir.suffix == ".gguf":
         raise ValueError(
             "vLLM requires HuggingFace model format, not GGUF. "
-            "Use 'forge serve --backend llamacpp' for GGUF models, "
-            "or 'forge export --format merged' first."
+            "Use 'pulsar serve --backend llamacpp' for GGUF models, "
+            "or 'pulsar export --format merged' first."
         )
 
     try:
@@ -68,7 +68,7 @@ def start_server(
         logger.warning(
             "Model appears to be a LoRA adapter. "
             "For best performance, merge first: "
-            "forge export --format merged"
+            "pulsar export --format merged"
         )
         import json
 

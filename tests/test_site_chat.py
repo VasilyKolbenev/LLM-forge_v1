@@ -48,7 +48,7 @@ class TestSiteChatEndpoint:
         with patch.dict("os.environ", {"OPENAI_API_KEY": ""}, clear=False):
             resp = client.post(
                 "/api/v1/site/chat",
-                json={"message": "What is LLM Forge?"},
+                json={"message": "What is Pulsar AI?"},
             )
         assert resp.status_code == 200
         data = resp.json()
@@ -93,15 +93,15 @@ class TestSiteChatEndpoint:
     @patch("pulsar_ai.ui.routes.site_chat._call_openai", new_callable=AsyncMock)
     def test_chat_returns_reply(self, mock_openai: AsyncMock, client: TestClient):
         """With API key, should call OpenAI and return reply."""
-        mock_openai.return_value = "LLM Forge is an amazing platform!"
+        mock_openai.return_value = "Pulsar AI is an amazing platform!"
         with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test123"}, clear=False):
             resp = client.post(
                 "/api/v1/site/chat",
-                json={"message": "Tell me about LLM Forge"},
+                json={"message": "Tell me about Pulsar AI"},
             )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["reply"] == "LLM Forge is an amazing platform!"
+        assert data["reply"] == "Pulsar AI is an amazing platform!"
         mock_openai.assert_called_once()
 
     @patch("pulsar_ai.ui.routes.site_chat._call_openai", new_callable=AsyncMock)
@@ -226,7 +226,7 @@ class TestSystemPrompt:
     def test_system_prompt_contains_product_info(self):
         """System prompt should contain key product information."""
         prompt = site_chat.SYSTEM_PROMPT
-        assert "LLM Forge" in prompt
+        assert "Pulsar AI" in prompt
         assert "26" in prompt  # node types
         assert "MCP" in prompt
         assert "A2A" in prompt

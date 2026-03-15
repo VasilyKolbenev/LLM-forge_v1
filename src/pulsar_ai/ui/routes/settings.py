@@ -18,7 +18,7 @@ class GenerateKeyRequest(BaseModel):
 @router.get("")
 async def get_settings(request: Request) -> dict:
     """Get server configuration info."""
-    cors_env = os.environ.get("FORGE_CORS_ORIGINS", "")
+    cors_env = os.environ.get("PULSAR_CORS_ORIGINS", "")
     cors_origins = (
         [o.strip() for o in cors_env.split(",") if o.strip()]
         if cors_env
@@ -28,7 +28,7 @@ async def get_settings(request: Request) -> dict:
         "version": "0.1.0",
         "auth_enabled": getattr(request.app.state, "auth_enabled", False),
         "stand_mode": getattr(request.app.state, "stand_mode", "dev"),
-        "env_profile": os.environ.get("FORGE_ENV_FILE", ".env"),
+        "env_profile": os.environ.get("PULSAR_ENV_FILE", ".env"),
         "cors_origins": cors_origins,
         "data_dir": str(Path("./data").resolve()),
     }

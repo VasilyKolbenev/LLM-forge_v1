@@ -1,7 +1,7 @@
 """Experiment tracking integration: ClearML, W&B, and local JSON tracker.
 
 Provides a unified interface for logging experiments across different backends.
-The `@forge_track` decorator auto-captures config, metrics, and artifacts.
+The `@pulsar_track` decorator auto-captures config, metrics, and artifacts.
 """
 
 import hashlib
@@ -84,7 +84,7 @@ class RunTracker:
                 auto_connect_frameworks=True,
             )
             if self.config:
-                self._external_task.connect(self.config, name="forge_config")
+                self._external_task.connect(self.config, name="pulsar_config")
             logger.info("ClearML task initialized: %s", self.run_name)
         except ImportError:
             logger.warning("clearml not installed, falling back to local tracker")
