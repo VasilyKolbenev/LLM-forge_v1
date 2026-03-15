@@ -35,7 +35,7 @@ export function Sidebar() {
     <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col">
       <div className="p-4 border-b border-border">
         <h1 className="text-lg font-bold tracking-tight">
-          <span className="text-primary">llm</span>-forge
+          <span className="text-primary">Pulsar</span> AI
         </h1>
         <p className="text-xs text-muted-foreground mt-0.5">Fine-tuning Platform</p>
       </div>

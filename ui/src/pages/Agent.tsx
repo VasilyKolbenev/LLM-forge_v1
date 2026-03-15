@@ -66,7 +66,7 @@ export function Agent() {
         {messages.length === 0 && (
           <div className="text-muted-foreground text-sm text-center mt-20">
             Start a conversation with your agent.<br />
-            Make sure the agent server is running (<code>forge agent serve</code>).
+            Make sure the agent server is running (<code>pulsar agent serve</code>).
           </div>
         )}
         {messages.map((msg, i) => (
