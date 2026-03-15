@@ -1,6 +1,6 @@
 """Chat proxy endpoint for the marketing landing page.
 
-Proxies chat messages to OpenAI GPT-4o-mini with LLM Forge product context.
+Proxies chat messages to OpenAI GPT-4o-mini with Pulsar AI product context.
 """
 
 import logging
@@ -24,10 +24,10 @@ MAX_HISTORY = 20
 RATE_LIMIT = 10  # requests per minute
 RATE_WINDOW = 60  # seconds
 
-SYSTEM_PROMPT = """You are the LLM Forge AI assistant on the product landing page.
-LLM Forge is a self-hosted, open-source platform for the full LLM lifecycle.
+SYSTEM_PROMPT = """You are the Pulsar AI assistant on the product landing page.
+Pulsar AI is a self-hosted, open-source platform for the full LLM lifecycle.
 
-Key facts about LLM Forge:
+Key facts about Pulsar AI:
 - Full-cycle platform: data preparation, fine-tuning (SFT + DPO), evaluation, deployment, monitoring
 - 26 visual workflow node types in 7 categories: Data, Training, Agent, Protocols, Safety, Evaluation, Ops
 - Visual DAG pipeline builder with C4-style grouping
@@ -41,7 +41,7 @@ Key facts about LLM Forge:
 - Tech stack: FastAPI + React 19 + TypeScript + PyTorch + Transformers
 - Serving: vLLM, llama.cpp, TGI, Ollama
 - Self-hosted, Docker deployment available
-- Open source (MIT license)
+- Open source (Apache 2.0 license)
 
 Deployment & Pricing:
 - Cloud (SaaS): From $49/user/month — managed platform, API access to GPT-4o/Claude/Llama/Mistral, auto-scaling GPU, fine-tuning as a service, free tier (2 GPU-hours/month)
@@ -49,7 +49,7 @@ Deployment & Pricing:
 
 Be helpful, concise, and professional. Answer questions about the product features,
 pricing, deployment, and technical capabilities. If asked about something unrelated
-to LLM Forge, politely redirect the conversation. Respond in the same language as
+to Pulsar AI, politely redirect the conversation. Respond in the same language as
 the user's message."""
 
 
@@ -191,7 +191,7 @@ async def site_chat(req: ChatRequest) -> ChatResponse:
     # Check if API key is available
     if not _get_openai_key():
         fallback = (
-            "Thank you for your interest in LLM Forge! Our AI assistant requires "
+            "Thank you for your interest in Pulsar AI! Our AI assistant requires "
             "an OpenAI API key to be configured. Please use the consultation form "
             "below to get in touch with our team, or visit our GitHub repository "
             "for documentation."

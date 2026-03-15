@@ -1,18 +1,18 @@
-# llm-forge
+# pulsar-ai
 
-Universal LLM fine-tuning pipeline: **SFT → DPO → Eval → Export → Serving**.
+Universal LLM lifecycle platform: **SFT -> DPO -> Eval -> Export -> Serving**.
 
 One YAML config, one CLI command. Auto-detects hardware and selects optimal training strategy.
 
 ## Features
 
 - **SFT & DPO training** with Unsloth (2-5x speedup) or HuggingFace Transformers
-- **Hardware auto-detection** — automatically selects QLoRA / LoRA / FSDP / DeepSpeed
-- **Config inheritance** — compose experiments from reusable base/model/strategy configs
-- **Evaluation** — batch inference, accuracy, F1, confusion matrix, Markdown reports
-- **Export** — merge LoRA, GGUF quantization (q4_k_m/q8_0/f16), Ollama Modelfile
-- **Serving** — llama.cpp, llama-cpp-python, Ollama, vLLM backends
-- **HuggingFace Hub** — push models/adapters directly
+- **Hardware auto-detection** -- automatically selects QLoRA / LoRA / FSDP / DeepSpeed
+- **Config inheritance** -- compose experiments from reusable base/model/strategy configs
+- **Evaluation** -- batch inference, accuracy, F1, confusion matrix, Markdown reports
+- **Export** -- merge LoRA, GGUF quantization (q4_k_m/q8_0/f16), Ollama Modelfile
+- **Serving** -- llama.cpp, llama-cpp-python, Ollama, vLLM backends
+- **HuggingFace Hub** -- push models/adapters directly
 
 ## Installation
 
@@ -32,30 +32,30 @@ pip install -e ".[all]"         # Everything
 ### 1. Train (SFT)
 
 ```bash
-forge train configs/examples/cam-sft.yaml
+pulsar train configs/examples/cam-sft.yaml
 ```
 
 With overrides:
 ```bash
-forge train configs/examples/cam-sft.yaml learning_rate=1e-4 epochs=5
+pulsar train configs/examples/cam-sft.yaml learning_rate=1e-4 epochs=5
 ```
 
 ### 2. Evaluate
 
 ```bash
-forge eval --model ./outputs/cam-sft/lora --test-data data/test.csv
+pulsar eval --model ./outputs/cam-sft/lora --test-data data/test.csv
 ```
 
 ### 3. Export to GGUF
 
 ```bash
-forge export --model ./outputs/cam-sft/lora --format gguf --quant q4_k_m
+pulsar export --model ./outputs/cam-sft/lora --format gguf --quant q4_k_m
 ```
 
 ### 4. Serve
 
 ```bash
-forge serve --model ./outputs/model-q4_k_m.gguf --port 8080
+pulsar serve --model ./outputs/model-q4_k_m.gguf --port 8080
 ```
 
 ## Config System
@@ -82,7 +82,7 @@ training:
 
 ### Hardware Auto-Detection
 
-Set `strategy: auto` (default) and llm-forge detects your GPU and selects:
+Set `strategy: auto` (default) and Pulsar AI detects your GPU and selects:
 
 | Hardware | Strategy |
 |----------|----------|
@@ -95,25 +95,25 @@ Set `strategy: auto` (default) and llm-forge detects your GPU and selects:
 ### Supported Models
 
 Pre-configured in `configs/models/`:
-- `qwen2.5-3b` — Qwen 2.5 3B Instruct
-- `llama3.2-1b` — Llama 3.2 1B Instruct
-- `mistral-7b` — Mistral 7B Instruct v0.3
+- `qwen2.5-3b` -- Qwen 2.5 3B Instruct
+- `llama3.2-1b` -- Llama 3.2 1B Instruct
+- `mistral-7b` -- Mistral 7B Instruct v0.3
 
-Any HuggingFace model works — just set `model.name` in your config.
+Any HuggingFace model works -- just set `model.name` in your config.
 
 ## CLI Reference
 
 ```
-forge train <config> [overrides...]   Train SFT or DPO
-forge eval --model <path> --test-data <path>   Evaluate model
-forge export --model <path> --format <gguf|merged|hub>   Export model
-forge serve --model <path> --backend <llamacpp|vllm>   Start server
+pulsar train <config> [overrides...]   Train SFT or DPO
+pulsar eval --model <path> --test-data <path>   Evaluate model
+pulsar export --model <path> --format <gguf|merged|hub>   Export model
+pulsar serve --model <path> --backend <llamacpp|vllm>   Start server
 ```
 
 ## Project Structure
 
 ```
-src/llm_forge/
+src/pulsar_ai/
   cli.py              CLI entrypoint
   config.py           YAML config loader with inheritance
   hardware.py         GPU detection & strategy selection
@@ -141,4 +141,4 @@ pytest tests/
 
 ## License
 
-MIT
+Apache 2.0
