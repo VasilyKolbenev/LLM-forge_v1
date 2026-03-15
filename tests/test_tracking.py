@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from llm_forge.tracking import (
+from pulsar_ai.tracking import (
     RunTracker,
     capture_environment,
     fingerprint_dataset,
@@ -21,7 +21,7 @@ from llm_forge.tracking import (
 @pytest.fixture
 def runs_dir(tmp_path):
     """Override RUNS_DIR to temp directory."""
-    with patch("llm_forge.tracking.RUNS_DIR", tmp_path):
+    with patch("pulsar_ai.tracking.RUNS_DIR", tmp_path):
         yield tmp_path
 
 

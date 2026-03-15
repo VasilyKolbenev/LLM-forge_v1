@@ -4,11 +4,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from llm_forge.agent.base import BaseAgent
-from llm_forge.agent.client import ModelClient
-from llm_forge.agent.guardrails import GuardrailsConfig
-from llm_forge.agent.memory import ShortTermMemory
-from llm_forge.agent.tool import Tool, ToolRegistry
+from pulsar_ai.agent.base import BaseAgent
+from pulsar_ai.agent.client import ModelClient
+from pulsar_ai.agent.guardrails import GuardrailsConfig
+from pulsar_ai.agent.memory import ShortTermMemory
+from pulsar_ai.agent.tool import Tool, ToolRegistry
 
 
 def _make_registry_with_search() -> ToolRegistry:

@@ -1,4 +1,4 @@
-"""Tests for llm_forge.cache module.
+"""Tests for pulsar_ai.cache module.
 
 Tests SemanticCache put/get, TTL expiry, invalidate, clear,
 cleanup_expired, LRU eviction, stats, and model-partitioned caching.
@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from llm_forge.cache import CacheEntry, SemanticCache
+from pulsar_ai.cache import CacheEntry, SemanticCache
 
 
 class TestCacheEntry:

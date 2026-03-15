@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from llm_forge.config import deep_merge, load_yaml, load_config, _set_nested, _parse_value
+from pulsar_ai.config import deep_merge, load_yaml, load_config, _set_nested, _parse_value
 
 
 class TestDeepMerge:

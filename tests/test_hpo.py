@@ -5,7 +5,7 @@ import yaml
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from llm_forge.hpo.sweep import SweepRunner, load_sweep_config
+from pulsar_ai.hpo.sweep import SweepRunner, load_sweep_config
 
 
 @pytest.fixture
@@ -144,7 +144,7 @@ class TestSweepRunner:
         params = runner._sample_params(trial, {"x": [0.1, 0.9]})
         assert params["x"] == 0.5
 
-    @patch("llm_forge.hpo.sweep.SweepRunner._run_trial")
+    @patch("pulsar_ai.hpo.sweep.SweepRunner._run_trial")
     def test_build_trial_config(self, mock_run, base_config_yaml, tmp_path):
         runner = SweepRunner(
             base_config_path=base_config_yaml,
@@ -157,7 +157,7 @@ class TestSweepRunner:
         assert config["training"]["lr"] == 1e-4
         assert "trial_0" in config["output"]["dir"]
 
-    @patch("llm_forge.hpo.sweep.SWEEP_RESULTS_DIR")
+    @patch("pulsar_ai.hpo.sweep.SWEEP_RESULTS_DIR")
     def test_save_results(self, mock_dir, tmp_path, base_config_yaml):
         mock_dir.__truediv__ = lambda self, x: tmp_path / x
         mock_dir.mkdir = MagicMock()

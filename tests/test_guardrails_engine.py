@@ -1,4 +1,4 @@
-"""Tests for llm_forge.guardrails.engine module.
+"""Tests for pulsar_ai.guardrails.engine module.
 
 Tests PII detection/masking, prompt injection detection, toxicity filtering,
 regex rules, JSON schema validation, length constraints, GuardReport,
@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from llm_forge.guardrails.engine import (
+from pulsar_ai.guardrails.engine import (
     GuardAction,
     GuardCheckResult,
     GuardReport,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from llm_forge.training.sft import _get_lora_params
+from pulsar_ai.training.sft import _get_lora_params
 
 
 class TestGetLoraParams:

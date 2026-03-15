@@ -1,4 +1,4 @@
-"""Tests for llm_forge.evaluation.llm_judge module.
+"""Tests for pulsar_ai.evaluation.llm_judge module.
 
 Tests LLMJudge: build_prompt, parse_scores, compute_overall,
 evaluate end-to-end, build_comparison_prompt, and default criteria.
@@ -6,7 +6,7 @@ evaluate end-to-end, build_comparison_prompt, and default criteria.
 
 import pytest
 
-from llm_forge.evaluation.llm_judge import (
+from pulsar_ai.evaluation.llm_judge import (
     DEFAULT_CRITERIA,
     JudgeCriterion,
     JudgeResult,

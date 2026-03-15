@@ -3,7 +3,7 @@
 import pytest
 from pathlib import Path
 
-from llm_forge.ui.auth import ApiKeyStore
+from pulsar_ai.ui.auth import ApiKeyStore
 
 
 class TestApiKeyStore:
@@ -13,9 +13,9 @@ class TestApiKeyStore:
     def store(self, tmp_path: Path) -> ApiKeyStore:
         return ApiKeyStore(store_path=tmp_path / "keys.json")
 
-    def test_generate_key_returns_forge_prefix(self, store: ApiKeyStore):
+    def test_generate_key_returns_pulsar_prefix(self, store: ApiKeyStore):
         key = store.generate_key("test")
-        assert key.startswith("forge_")
+        assert key.startswith("pulsar_")
         assert len(key) > 20
 
     def test_verify_valid_key(self, store: ApiKeyStore):
@@ -59,7 +59,7 @@ class TestApiKeyMiddleware:
     @pytest.fixture
     def auth_app(self, tmp_path: Path):
         from fastapi import FastAPI
-        from llm_forge.ui.auth import ApiKeyMiddleware, ApiKeyStore
+        from pulsar_ai.ui.auth import ApiKeyMiddleware, ApiKeyStore
 
         key_store = ApiKeyStore(store_path=tmp_path / "keys.json")
         app = FastAPI()
@@ -113,7 +113,7 @@ class TestApiKeyMiddleware:
     def test_disabled_middleware_allows_all(self, tmp_path: Path):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
-        from llm_forge.ui.auth import ApiKeyMiddleware, ApiKeyStore
+        from pulsar_ai.ui.auth import ApiKeyMiddleware, ApiKeyStore
 
         key_store = ApiKeyStore(store_path=tmp_path / "keys.json")
         app = FastAPI()

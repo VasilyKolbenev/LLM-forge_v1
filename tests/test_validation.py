@@ -2,7 +2,7 @@
 
 import pytest
 
-from llm_forge.validation import validate_config, _has_nested
+from pulsar_ai.validation import validate_config, _has_nested
 
 
 class TestValidateConfig:

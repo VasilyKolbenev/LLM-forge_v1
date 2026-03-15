@@ -7,8 +7,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from llm_forge.data.loader import load_dataset_from_config, _detect_format
-from llm_forge.data.formatter import (
+from pulsar_ai.data.loader import load_dataset_from_config, _detect_format
+from pulsar_ai.data.formatter import (
     build_chat_examples,
     load_system_prompt,
     build_dpo_pairs,

@@ -1,4 +1,4 @@
-"""Tests for llm_forge.model_card module.
+"""Tests for pulsar_ai.model_card module.
 
 Tests generate_model_card() with various field combinations,
 required sections, custom extra_sections, and minimal inputs.
@@ -6,7 +6,7 @@ required sections, custom extra_sections, and minimal inputs.
 
 import pytest
 
-from llm_forge.model_card import generate_model_card
+from pulsar_ai.model_card import generate_model_card
 
 
 class TestGenerateModelCardAllFields:

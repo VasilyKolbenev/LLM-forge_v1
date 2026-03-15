@@ -8,10 +8,10 @@ from dataclasses import asdict
 
 from fastapi.testclient import TestClient
 
-from llm_forge.compute.manager import ComputeManager, ComputeTarget, ConnectionTestResult
-from llm_forge.compute.ssh import SSHConnection
-from llm_forge.compute.remote_runner import RemoteJobRunner, RemoteJobStatus
-from llm_forge.ui.app import create_app
+from pulsar_ai.compute.manager import ComputeManager, ComputeTarget, ConnectionTestResult
+from pulsar_ai.compute.ssh import SSHConnection
+from pulsar_ai.compute.remote_runner import RemoteJobRunner, RemoteJobStatus
+from pulsar_ai.ui.app import create_app
 
 
 # ──────────────────────────────────────────────────────────
@@ -170,11 +170,11 @@ class TestRemoteJobRunner:
 @pytest.fixture
 def client(tmp_path):
     """Create test client with patched stores."""
-    with patch("llm_forge.ui.routes.training._store"), \
-         patch("llm_forge.ui.routes.experiments._store"), \
-         patch("llm_forge.ui.routes.evaluation._store"), \
-         patch("llm_forge.ui.routes.export_routes._store"), \
-         patch("llm_forge.ui.routes.compute._manager") as mock_mgr:
+    with patch("pulsar_ai.ui.routes.training._store"), \
+         patch("pulsar_ai.ui.routes.experiments._store"), \
+         patch("pulsar_ai.ui.routes.evaluation._store"), \
+         patch("pulsar_ai.ui.routes.export_routes._store"), \
+         patch("pulsar_ai.ui.routes.compute._manager") as mock_mgr:
         mock_mgr.list_targets.return_value = []
         mock_mgr.add_target.return_value = ComputeTarget(
             id="abc12345",

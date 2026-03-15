@@ -3,9 +3,9 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from llm_forge.pipeline.steps import check_condition, dispatch_step
-from llm_forge.pipeline.executor import PipelineExecutor
-from llm_forge.pipeline.tracker import PipelineTracker
+from pulsar_ai.pipeline.steps import check_condition, dispatch_step
+from pulsar_ai.pipeline.executor import PipelineExecutor
+from pulsar_ai.pipeline.tracker import PipelineTracker
 
 
 class TestCheckCondition:
@@ -90,7 +90,7 @@ class TestCheckCondition:
 class TestConditionalPipeline:
     """Test pipeline executor with conditional steps."""
 
-    @patch("llm_forge.pipeline.executor.dispatch_step")
+    @patch("pulsar_ai.pipeline.executor.dispatch_step")
     def test_skip_conditional_step(self, mock_dispatch, tmp_path):
         """Step with unmet condition should be skipped."""
         config = {
@@ -133,7 +133,7 @@ class TestConditionalPipeline:
         assert outputs["dpo"]["_skipped"] is True
         assert mock_dispatch.call_count == 2  # train + eval, not dpo
 
-    @patch("llm_forge.pipeline.executor.dispatch_step")
+    @patch("pulsar_ai.pipeline.executor.dispatch_step")
     def test_run_conditional_step(self, mock_dispatch, tmp_path):
         """Step with met condition should run."""
         config = {
@@ -174,7 +174,7 @@ class TestConditionalPipeline:
 class TestNewStepTypes:
     """Test new pipeline step types."""
 
-    @patch("llm_forge.registry.ModelRegistry")
+    @patch("pulsar_ai.registry.ModelRegistry")
     def test_register_step(self, MockRegistry):
         mock_reg = MagicMock()
         mock_reg.register.return_value = {

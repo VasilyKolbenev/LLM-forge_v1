@@ -1,4 +1,4 @@
-"""Tests for llm_forge.dataset_version module.
+"""Tests for pulsar_ai.dataset_version module.
 
 Tests DatasetVersionStore: register, get_version, list_versions,
 list_datasets, diff, get_lineage, and persistence with tmp_path.
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from llm_forge.dataset_version import DatasetVersion, DatasetVersionStore
+from pulsar_ai.dataset_version import DatasetVersion, DatasetVersionStore
 
 
 @pytest.fixture

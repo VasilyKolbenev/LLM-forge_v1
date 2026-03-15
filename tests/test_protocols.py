@@ -4,14 +4,14 @@ import pytest
 import time
 from unittest.mock import MagicMock
 
-from llm_forge.protocols.mcp import (
+from pulsar_ai.protocols.mcp import (
     MCPServer,
     MCPServerConfig,
     MCPToolDefinition,
     MCPClient,
     MCPClientConfig,
 )
-from llm_forge.protocols.a2a import (
+from pulsar_ai.protocols.a2a import (
     A2AServer,
     A2AClient,
     A2AClientConfig,
@@ -19,7 +19,7 @@ from llm_forge.protocols.a2a import (
     A2ATask,
     TaskState,
 )
-from llm_forge.protocols.gateway import (
+from pulsar_ai.protocols.gateway import (
     APIGateway,
     GatewayConfig,
     GatewayRoute,

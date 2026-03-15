@@ -1,4 +1,4 @@
-"""Tests for llm_forge.feedback module.
+"""Tests for pulsar_ai.feedback module.
 
 Tests FeedbackCollector recording thumbs/rating/preference,
 DPO pair export, get_stats(), and persistence to storage_dir.
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from llm_forge.feedback import FeedbackCollector, FeedbackEntry
+from pulsar_ai.feedback import FeedbackCollector, FeedbackEntry
 
 
 @pytest.fixture

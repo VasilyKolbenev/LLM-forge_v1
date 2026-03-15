@@ -6,7 +6,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from llm_forge.cli import main
+from pulsar_ai.cli import main
 
 
 @pytest.fixture
@@ -65,7 +65,7 @@ class TestForgeHelp:
     def test_help_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0
-        assert "llm-forge" in result.output.lower() or "universal" in result.output.lower()
+        assert "pulsar-ai" in result.output.lower() or "universal" in result.output.lower()
 
     def test_train_help(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["train", "--help"])

@@ -2,7 +2,7 @@
 
 import pytest
 
-from llm_forge.evaluation.metrics import compute_metrics, _build_confusion_matrix
+from pulsar_ai.evaluation.metrics import compute_metrics, _build_confusion_matrix
 
 
 class TestComputeMetrics:

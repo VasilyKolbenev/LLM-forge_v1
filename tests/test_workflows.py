@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from llm_forge.ui.workflow_store import WorkflowStore
+from pulsar_ai.ui.workflow_store import WorkflowStore
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
@@ -204,12 +204,12 @@ def client(tmp_path: Path):
     """Create test client with isolated workflow store."""
     from fastapi.testclient import TestClient
 
-    from llm_forge.ui.routes import workflows as wf_module
+    from pulsar_ai.ui.routes import workflows as wf_module
 
     original_store = wf_module._store
     wf_module._store = WorkflowStore(store_path=tmp_path / "wf.json")
     try:
-        from llm_forge.ui.app import create_app
+        from pulsar_ai.ui.app import create_app
         app = create_app()
         yield TestClient(app)
     finally:

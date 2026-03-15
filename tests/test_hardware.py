@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from llm_forge.hardware import (
+from pulsar_ai.hardware import (
     HardwareInfo,
     _select_strategy,
     get_strategy_config,

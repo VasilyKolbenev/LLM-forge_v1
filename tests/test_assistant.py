@@ -8,13 +8,13 @@ from unittest.mock import patch, MagicMock
 
 from fastapi.testclient import TestClient
 
-from llm_forge.ui.assistant import (
+from pulsar_ai.ui.assistant import (
     _get_forge_tools,
     _check_llm_available,
     parse_command,
     HELP_TEXT,
 )
-from llm_forge.ui.app import create_app
+from pulsar_ai.ui.app import create_app
 
 
 # ──────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@ class TestForgeTools:
     def test_list_experiments_empty(self):
         """Test list_experiments with no experiments."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.assistant._store") as mock_store:
+        with patch("pulsar_ai.ui.assistant._store") as mock_store:
             mock_store.list_all.return_value = []
             result = tools.get("list_experiments").execute()
         assert "No experiments found" in result
@@ -47,7 +47,7 @@ class TestForgeTools:
     def test_list_experiments_with_data(self):
         """Test list_experiments returns formatted list."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.assistant._store") as mock_store:
+        with patch("pulsar_ai.ui.assistant._store") as mock_store:
             mock_store.list_all.return_value = [
                 {"id": "abc", "name": "test-exp", "status": "completed", "final_loss": 0.5},
             ]
@@ -59,7 +59,7 @@ class TestForgeTools:
     def test_get_experiment_found(self):
         """Test get_experiment returns experiment details."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.assistant._store") as mock_store:
+        with patch("pulsar_ai.ui.assistant._store") as mock_store:
             mock_store.get.return_value = {
                 "id": "abc", "name": "test", "status": "completed",
                 "task": "sft", "model": "qwen", "final_loss": 0.3,
@@ -73,7 +73,7 @@ class TestForgeTools:
     def test_get_experiment_not_found(self):
         """Test get_experiment returns error for missing experiment."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.assistant._store") as mock_store:
+        with patch("pulsar_ai.ui.assistant._store") as mock_store:
             mock_store.get.return_value = None
             result = tools.get("get_experiment").execute(experiment_id="missing")
         assert "not found" in result
@@ -81,7 +81,7 @@ class TestForgeTools:
     def test_check_training_no_jobs(self):
         """Test check_training with no jobs."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.assistant.list_jobs") as mock_list:
+        with patch("pulsar_ai.ui.assistant.list_jobs") as mock_list:
             mock_list.return_value = []
             result = tools.get("check_training").execute()
         assert "No training jobs" in result
@@ -89,7 +89,7 @@ class TestForgeTools:
     def test_check_training_with_jobs(self):
         """Test check_training shows job info."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.assistant.list_jobs") as mock_list:
+        with patch("pulsar_ai.ui.assistant.list_jobs") as mock_list:
             mock_list.return_value = [
                 {"job_id": "j1", "status": "running", "experiment_id": "e1"},
             ]
@@ -130,7 +130,7 @@ class TestForgeTools:
     def test_list_workflows_empty(self):
         """Test list_workflows with no workflows."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.workflow_store.WorkflowStore") as mock_cls:
+        with patch("pulsar_ai.ui.workflow_store.WorkflowStore") as mock_cls:
             mock_cls.return_value.list_all.return_value = []
             result = tools.get("list_workflows").execute()
         assert "No saved workflows" in result
@@ -138,7 +138,7 @@ class TestForgeTools:
     def test_list_workflows_with_data(self):
         """Test list_workflows returns formatted list."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.workflow_store.WorkflowStore") as mock_cls:
+        with patch("pulsar_ai.ui.workflow_store.WorkflowStore") as mock_cls:
             mock_cls.return_value.list_all.return_value = [
                 {"id": "w1", "name": "My Pipeline", "nodes": [1, 2], "edges": [1],
                  "run_count": 3},
@@ -150,7 +150,7 @@ class TestForgeTools:
     def test_get_workflow_not_found(self):
         """Test get_workflow returns error for missing workflow."""
         tools = _get_forge_tools()
-        with patch("llm_forge.ui.workflow_store.WorkflowStore") as mock_cls:
+        with patch("pulsar_ai.ui.workflow_store.WorkflowStore") as mock_cls:
             mock_cls.return_value.get.return_value = None
             result = tools.get("get_workflow").execute(workflow_id="missing")
         assert "not found" in result
@@ -217,8 +217,8 @@ class TestCommandParser:
 
     def test_status_command(self):
         """Test /status calls check_training + list_experiments."""
-        with patch("llm_forge.ui.assistant._store") as mock_store, \
-             patch("llm_forge.ui.assistant.list_jobs") as mock_jobs:
+        with patch("pulsar_ai.ui.assistant._store") as mock_store, \
+             patch("pulsar_ai.ui.assistant.list_jobs") as mock_jobs:
             mock_store.list_all.return_value = []
             mock_jobs.return_value = []
             result = parse_command("/status")
@@ -244,7 +244,7 @@ class TestCommandParser:
 
     def test_experiments_command(self):
         """Test /experiments command."""
-        with patch("llm_forge.ui.assistant._store") as mock_store:
+        with patch("pulsar_ai.ui.assistant._store") as mock_store:
             mock_store.list_all.return_value = []
             result = parse_command("/experiments")
         assert result is not None
@@ -268,7 +268,7 @@ class TestCommandParser:
 
     def test_cancel_command(self):
         """Test /cancel command."""
-        with patch("llm_forge.ui.assistant.cancel_job") as mock_cancel:
+        with patch("pulsar_ai.ui.assistant.cancel_job") as mock_cancel:
             mock_cancel.return_value = True
             result = parse_command("/cancel job_id=j1")
         assert result is not None
@@ -276,7 +276,7 @@ class TestCommandParser:
 
     def test_workflows_command(self):
         """Test /workflows calls list_workflows."""
-        with patch("llm_forge.ui.workflow_store.WorkflowStore") as mock_cls:
+        with patch("pulsar_ai.ui.workflow_store.WorkflowStore") as mock_cls:
             mock_cls.return_value.list_all.return_value = []
             result = parse_command("/workflows")
         assert result is not None
@@ -303,10 +303,10 @@ class TestCommandParser:
 @pytest.fixture
 def client():
     """Create test client for assistant endpoints."""
-    with patch("llm_forge.ui.routes.training._store"), \
-         patch("llm_forge.ui.routes.experiments._store"), \
-         patch("llm_forge.ui.routes.evaluation._store"), \
-         patch("llm_forge.ui.routes.export_routes._store"):
+    with patch("pulsar_ai.ui.routes.training._store"), \
+         patch("pulsar_ai.ui.routes.experiments._store"), \
+         patch("pulsar_ai.ui.routes.evaluation._store"), \
+         patch("pulsar_ai.ui.routes.export_routes._store"):
         app = create_app()
         yield TestClient(app)
 
@@ -328,7 +328,7 @@ class TestAssistantAPI:
         assert resp.status_code == 200
         assert "session_id" in resp.json()
 
-    @patch("llm_forge.ui.assistant._check_llm_available")
+    @patch("pulsar_ai.ui.assistant._check_llm_available")
     def test_chat_no_llm_no_command(self, mock_llm, client):
         """Test chat without LLM and without command shows help."""
         mock_llm.return_value = False
@@ -342,9 +342,9 @@ class TestAssistantAPI:
 
     def test_status_endpoint(self, client):
         """Test GET /api/v1/assistant/status."""
-        with patch("llm_forge.ui.assistant.list_jobs") as mock_jobs, \
-             patch("llm_forge.ui.assistant._store") as mock_store, \
-             patch("llm_forge.ui.assistant._check_llm_available") as mock_llm:
+        with patch("pulsar_ai.ui.assistant.list_jobs") as mock_jobs, \
+             patch("pulsar_ai.ui.assistant._store") as mock_store, \
+             patch("pulsar_ai.ui.assistant._check_llm_available") as mock_llm:
             mock_jobs.return_value = []
             mock_store.list_all.return_value = []
             mock_llm.return_value = False

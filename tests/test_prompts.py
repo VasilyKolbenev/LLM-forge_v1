@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from llm_forge.prompts.store import PromptStore
+from pulsar_ai.prompts.store import PromptStore
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
@@ -182,12 +182,12 @@ def client(tmp_path: Path):
     """Create test client with isolated prompt store."""
     from fastapi.testclient import TestClient
 
-    from llm_forge.ui.routes import prompts as prompts_module
+    from pulsar_ai.ui.routes import prompts as prompts_module
 
     original_store = prompts_module._store
     prompts_module._store = PromptStore(store_path=tmp_path / "p.json")
     try:
-        from llm_forge.ui.app import create_app
+        from pulsar_ai.ui.app import create_app
         app = create_app()
         yield TestClient(app)
     finally:

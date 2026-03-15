@@ -7,15 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from llm_forge.storage.database import Database, get_database, reset_database
-from llm_forge.storage.migration import (
+from pulsar_ai.storage.database import Database, get_database, reset_database
+from pulsar_ai.storage.migration import (
     migrate_all,
     migrate_experiments,
     migrate_prompts,
     migrate_runs,
     migrate_workflows,
 )
-from llm_forge.storage.schema import SCHEMA_VERSION
+from pulsar_ai.storage.schema import SCHEMA_VERSION
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
@@ -413,7 +413,7 @@ class TestMigrateRuns:
         run = {
             "run_id": "r1abc",
             "name": "sft-run",
-            "project": "llm-forge",
+            "project": "pulsar-ai",
             "backend": "local",
             "status": "completed",
             "config": {"lr": 1e-4},

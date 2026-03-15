@@ -1,4 +1,4 @@
-"""Tests for llm_forge.observability.tracer module.
+"""Tests for pulsar_ai.observability.tracer module.
 
 Tests Span creation/duration/attributes/events, Trace aggregation,
 Tracer context managers, record_llm_call, list_traces, eviction,
@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from llm_forge.observability.tracer import Span, Trace, Tracer, get_tracer
+from pulsar_ai.observability.tracer import Span, Trace, Tracer, get_tracer
 
 
 class TestSpan:

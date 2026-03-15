@@ -7,7 +7,7 @@ fastapi = pytest.importorskip("fastapi")
 
 from fastapi.testclient import TestClient
 
-from llm_forge.agent.server import create_agent_app
+from pulsar_ai.agent.server import create_agent_app
 
 
 @pytest.fixture

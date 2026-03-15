@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from llm_forge.agent.memory import LongTermMemory
+from pulsar_ai.agent.memory import LongTermMemory
 
 
 class TestLongTermMemory:

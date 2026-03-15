@@ -6,7 +6,7 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from llm_forge.cli import main
+from pulsar_ai.cli import main
 
 
 @pytest.fixture

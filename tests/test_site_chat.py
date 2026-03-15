@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from llm_forge.ui.routes import site_chat
+from pulsar_ai.ui.routes import site_chat
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +90,7 @@ class TestSiteChatEndpoint:
         # Should have 4 messages (2 user + 2 assistant)
         assert len(site_chat._sessions[sid]) == 4
 
-    @patch("llm_forge.ui.routes.site_chat._call_openai", new_callable=AsyncMock)
+    @patch("pulsar_ai.ui.routes.site_chat._call_openai", new_callable=AsyncMock)
     def test_chat_returns_reply(self, mock_openai: AsyncMock, client: TestClient):
         """With API key, should call OpenAI and return reply."""
         mock_openai.return_value = "LLM Forge is an amazing platform!"
@@ -104,7 +104,7 @@ class TestSiteChatEndpoint:
         assert data["reply"] == "LLM Forge is an amazing platform!"
         mock_openai.assert_called_once()
 
-    @patch("llm_forge.ui.routes.site_chat._call_openai", new_callable=AsyncMock)
+    @patch("pulsar_ai.ui.routes.site_chat._call_openai", new_callable=AsyncMock)
     def test_chat_sends_history_to_openai(self, mock_openai: AsyncMock, client: TestClient):
         """Should include conversation history when calling OpenAI."""
         mock_openai.return_value = "Reply"

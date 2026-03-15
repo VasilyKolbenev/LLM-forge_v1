@@ -4,7 +4,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from llm_forge.registry import ModelRegistry
+from pulsar_ai.registry import ModelRegistry
 
 
 @pytest.fixture

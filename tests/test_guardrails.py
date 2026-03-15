@@ -2,7 +2,7 @@
 
 import pytest
 
-from llm_forge.agent.guardrails import GuardrailsConfig
+from pulsar_ai.agent.guardrails import GuardrailsConfig
 
 
 class TestGuardrailsConfig:

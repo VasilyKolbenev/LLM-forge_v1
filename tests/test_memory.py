@@ -2,7 +2,7 @@
 
 import pytest
 
-from llm_forge.agent.memory import ShortTermMemory
+from pulsar_ai.agent.memory import ShortTermMemory
 
 
 class TestShortTermMemory:

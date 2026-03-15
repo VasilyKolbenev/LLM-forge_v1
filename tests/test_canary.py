@@ -1,4 +1,4 @@
-"""Tests for llm_forge.deployment.canary module.
+"""Tests for pulsar_ai.deployment.canary module.
 
 Tests CanaryDeployer routing, rollback, promote, traffic splitting,
 CanaryConfig.from_dict, ABTester routing/metrics/winner detection.
@@ -9,7 +9,7 @@ from collections import Counter
 
 import pytest
 
-from llm_forge.deployment.canary import (
+from pulsar_ai.deployment.canary import (
     ABTestConfig,
     ABTester,
     CanaryConfig,

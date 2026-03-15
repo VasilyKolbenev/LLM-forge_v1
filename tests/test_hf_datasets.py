@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import pandas as pd
 
-from llm_forge.data.loader import load_dataset_from_config
+from pulsar_ai.data.loader import load_dataset_from_config
 
 
 class TestHuggingFaceLoader:
