@@ -8,7 +8,7 @@ Schema version is tracked in ``_schema_meta`` so future migrations
 can inspect the current version before applying ALTER TABLE / new tables.
 """
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 BOOTSTRAP_SQL = """
 -- ── Meta ────────────────────────────────────────────────────────────
@@ -108,4 +108,63 @@ CREATE TABLE IF NOT EXISTS runs (
 
 CREATE INDEX IF NOT EXISTS idx_runs_status  ON runs(status);
 CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project);
+
+-- ── API Keys ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS api_keys (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    key_hash    TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    last_used_at TEXT,
+    revoked_at  TEXT,
+    revoked     INTEGER DEFAULT 0
+);
+
+-- ── Compute Targets ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS compute_targets (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    host            TEXT NOT NULL,
+    user            TEXT NOT NULL,
+    key_path        TEXT DEFAULT '',
+    gpu_count       INTEGER DEFAULT 0,
+    gpu_type        TEXT DEFAULT '',
+    vram_gb         REAL DEFAULT 0,
+    created_at      TEXT NOT NULL,
+    last_heartbeat  TEXT
+);
+
+-- ── Jobs ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS jobs (
+    id              TEXT PRIMARY KEY,
+    experiment_id   TEXT,
+    status          TEXT NOT NULL DEFAULT 'queued',
+    job_type        TEXT NOT NULL DEFAULT 'sft',
+    config          TEXT DEFAULT '{}',
+    started_at      TEXT NOT NULL,
+    completed_at    TEXT,
+    error_message   TEXT,
+    pid             INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+
+-- ── Assistant Sessions ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS assistant_sessions (
+    id              TEXT PRIMARY KEY,
+    session_type    TEXT NOT NULL DEFAULT 'assistant',
+    messages        TEXT DEFAULT '[]',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    ttl_hours       INTEGER DEFAULT 24
+);
+
+-- ── API Key Events (audit trail) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS api_key_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_id      TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    timestamp   TEXT NOT NULL,
+    ip_address  TEXT DEFAULT ''
+);
 """
