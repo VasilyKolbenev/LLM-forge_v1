@@ -16,7 +16,7 @@ import { ResourceBar } from "@/components/metrics/ResourceBar"
 import { useMetrics } from "@/hooks/useMetrics"
 
 const links = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/new", icon: FlaskConical, label: "New Experiment" },
   { to: "/experiments", icon: ListChecks, label: "Experiments" },
   { to: "/datasets", icon: Database, label: "Datasets" },
@@ -44,7 +44,7 @@ export function Sidebar() {
           <NavLink
             key={to}
             to={to}
-            end={to === "/"}
+            end={to === "/dashboard"}
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
