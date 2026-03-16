@@ -1,25 +1,25 @@
 """API key authentication for Pulsar AI UI.
 
 Provides:
-- ApiKeyStore: JSON-based hashed key storage
+- ApiKeyStore: SQLite-backed hashed key storage
 - ApiKeyMiddleware: FastAPI middleware for Bearer token auth
 
 Enable via PULSAR_AUTH_ENABLED=true environment variable.
 """
 
 import hashlib
-import json
 import logging
 import secrets
-from pathlib import Path
+import uuid
+from datetime import datetime
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-logger = logging.getLogger(__name__)
+from pulsar_ai.storage.database import Database, get_database
 
-DEFAULT_KEYS_PATH = Path("./data/api_keys.json")
+logger = logging.getLogger(__name__)
 
 # Paths that don't require authentication
 PUBLIC_PATHS = frozenset({
@@ -31,20 +31,17 @@ PUBLIC_PATHS = frozenset({
 
 
 class ApiKeyStore:
-    """Manages hashed API keys in a JSON file.
+    """Manages hashed API keys in SQLite.
 
     Keys are stored as SHA-256 hashes — plaintext is only shown once
     at generation time.
 
     Args:
-        store_path: Path to the JSON key store file.
+        db: Database instance.  Uses the module singleton when *None*.
     """
 
-    def __init__(self, store_path: Path | None = None) -> None:
-        self.store_path = store_path or DEFAULT_KEYS_PATH
-        self.store_path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.store_path.exists():
-            self._save({"keys": []})
+    def __init__(self, db: Database | None = None) -> None:
+        self._db = db or get_database()
 
     def generate_key(self, name: str = "default") -> str:
         """Generate a new API key, store its hash, return plaintext.
@@ -57,14 +54,22 @@ class ApiKeyStore:
         """
         raw_key = f"pulsar_{secrets.token_urlsafe(32)}"
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
-        data = self._load()
-        data["keys"].append({"name": name, "hash": key_hash})
-        self._save(data)
+        key_id = str(uuid.uuid4())[:8]
+        now_iso = datetime.now().isoformat()
+
+        self._db.execute(
+            """
+            INSERT INTO api_keys (id, name, key_hash, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (key_id, name, key_hash, now_iso),
+        )
+        self._db.commit()
         logger.info("Generated API key '%s'", name)
         return raw_key
 
     def verify(self, key: str) -> bool:
-        """Check if a key matches any stored hash.
+        """Check if a key matches any stored non-revoked hash.
 
         Args:
             key: Plaintext API key to verify.
@@ -73,8 +78,17 @@ class ApiKeyStore:
             True if the key is valid.
         """
         key_hash = hashlib.sha256(key.encode()).hexdigest()
-        data = self._load()
-        return any(k["hash"] == key_hash for k in data["keys"])
+        row = self._db.fetch_one(
+            "SELECT id FROM api_keys WHERE key_hash = ? AND revoked = 0",
+            (key_hash,),
+        )
+        if row:
+            self._db.execute(
+                "UPDATE api_keys SET last_used_at = ? WHERE id = ?",
+                (datetime.now().isoformat(), row["id"]),
+            )
+            self._db.commit()
+        return row is not None
 
     def list_keys(self) -> list[dict]:
         """List key metadata (names only, no hashes).
@@ -82,7 +96,10 @@ class ApiKeyStore:
         Returns:
             List of dicts with 'name' field.
         """
-        return [{"name": k["name"]} for k in self._load()["keys"]]
+        rows = self._db.fetch_all(
+            "SELECT name FROM api_keys WHERE revoked = 0"
+        )
+        return [{"name": r["name"]} for r in rows]
 
     def revoke(self, name: str) -> bool:
         """Revoke all keys with a given name.
@@ -93,24 +110,19 @@ class ApiKeyStore:
         Returns:
             True if any keys were revoked.
         """
-        data = self._load()
-        original = len(data["keys"])
-        data["keys"] = [k for k in data["keys"] if k["name"] != name]
-        self._save(data)
-        revoked = len(data["keys"]) < original
-        if revoked:
+        now_iso = datetime.now().isoformat()
+        cursor = self._db.execute(
+            """
+            UPDATE api_keys
+            SET revoked = 1, revoked_at = ?
+            WHERE name = ? AND revoked = 0
+            """,
+            (now_iso, name),
+        )
+        self._db.commit()
+        if cursor.rowcount > 0:
             logger.info("Revoked API key '%s'", name)
-        return revoked
-
-    def _load(self) -> dict:
-        """Load key store from disk."""
-        with open(self.store_path, encoding="utf-8") as f:
-            return json.load(f)
-
-    def _save(self, data: dict) -> None:
-        """Save key store to disk."""
-        with open(self.store_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+        return cursor.rowcount > 0
 
 
 class ApiKeyMiddleware(BaseHTTPMiddleware):
