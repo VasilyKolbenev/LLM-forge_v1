@@ -1,11 +1,23 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 import { api } from "@/api/client"
 import { LossChart } from "@/components/training/LossChart"
 import type { SSEMetrics } from "@/hooks/useSSE"
 import {
-  Trash2, GitCompare, Target, Percent, BarChart3,
+  Trash2, GitCompare, Target, Percent, BarChart3, FlaskConical,
   Cpu, Settings, Layers, HardDrive, Timer, ChevronDown, ChevronUp,
 } from "lucide-react"
+import { Badge } from "@/components/ui/Badge"
+import { StatusDot } from "@/components/ui/StatusDot"
+import { EmptyState } from "@/components/ui/EmptyState"
+import { Breadcrumbs } from "@/components/ui/Breadcrumbs"
+
+const statusVariant: Record<string, "success" | "warning" | "error" | "default"> = {
+  running: "warning",
+  completed: "success",
+  failed: "error",
+  queued: "default",
+}
 
 export function Experiments() {
   const [experiments, setExperiments] = useState<Array<Record<string, unknown>>>([])
@@ -74,6 +86,7 @@ export function Experiments() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumbs items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Experiments" }]} />
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Experiments</h2>
@@ -90,7 +103,19 @@ export function Experiments() {
       </div>
 
       {experiments.length === 0 ? (
-        <p className="text-muted-foreground">No experiments yet.</p>
+        <EmptyState
+          icon={FlaskConical}
+          title="No experiments yet"
+          description="Create your first fine-tuning experiment to get started."
+          action={
+            <Link
+              to="/new"
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
+            >
+              New Experiment
+            </Link>
+          }
+        />
       ) : (
         <div className="border border-border rounded-lg overflow-hidden">
           <table className="w-full text-sm">
@@ -129,16 +154,17 @@ export function Experiments() {
                     </button>
                   </td>
                   <td className="px-4 py-2">
-                    <StatusBadge status={String(exp.status)} />
+                    <Badge variant={statusVariant[String(exp.status)] || "default"}>
+                      {exp.status === "running" && <StatusDot status="warning" pulse className="mr-1" />}
+                      {String(exp.status)}
+                    </Badge>
                   </td>
                   <td className="px-4 py-2 text-muted-foreground text-xs">{String(exp.model || "—")}</td>
                   <td className="px-4 py-2">
                     {(() => {
                       const a = exp.artifacts as Record<string, unknown> | undefined
                       const s = a?.strategy as string | undefined
-                      return s ? (
-                        <span className="inline-block px-1.5 py-0.5 rounded text-xs bg-primary/10 text-primary font-medium uppercase">{s}</span>
-                      ) : "—"
+                      return s ? <Badge variant="info">{s.toUpperCase()}</Badge> : "—"
                     })()}
                   </td>
                   <td className="px-4 py-2 font-mono">
@@ -387,7 +413,7 @@ function SummaryCard({ label, value, mono, badge, highlight, sub }: {
   return (
     <div className="bg-secondary/30 rounded-lg p-3 text-center">
       {badge ? (
-        <div className="mb-1"><StatusBadge status={value} /></div>
+        <div className="mb-1"><Badge variant={statusVariant[value] || "default"}>{value}</Badge></div>
       ) : (
         <div className={`text-lg font-bold ${highlight ? "text-success" : ""} ${mono ? "font-mono" : ""}`}>
           {value}
@@ -527,17 +553,4 @@ function EvalResults({ data }: { data: Record<string, unknown> | null }) {
   )
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    running: "bg-warning/20 text-warning",
-    completed: "bg-success/20 text-success",
-    failed: "bg-destructive/20 text-destructive",
-    queued: "bg-muted text-muted-foreground",
-  }
-  return (
-    <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${colors[status] || colors.queued}`}>
-      {status}
-    </span>
-  )
-}
 
