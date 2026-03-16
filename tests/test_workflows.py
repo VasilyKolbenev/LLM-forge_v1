@@ -1,18 +1,23 @@
 """Tests for workflow store and API routes."""
 
-import json
 from pathlib import Path
 
 import pytest
 
+from pulsar_ai.storage.database import Database
 from pulsar_ai.ui.workflow_store import WorkflowStore
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def store(tmp_path: Path) -> WorkflowStore:
-    return WorkflowStore(store_path=tmp_path / "workflows.json")
+def db(tmp_path: Path) -> Database:
+    return Database(tmp_path / "test.db")
+
+
+@pytest.fixture
+def store(db: Database) -> WorkflowStore:
+    return WorkflowStore(db=db)
 
 
 SAMPLE_NODES = [
@@ -30,12 +35,9 @@ SAMPLE_EDGES = [
 # ── WorkflowStore Unit Tests ───────────────────────────────────────────
 
 class TestWorkflowStore:
-    def test_init_creates_file(self, tmp_path: Path) -> None:
-        path = tmp_path / "wf.json"
-        assert not path.exists()
-        WorkflowStore(store_path=path)
-        assert path.exists()
-        assert json.loads(path.read_text()) == []
+    def test_init_creates_empty_store(self, db: Database) -> None:
+        s = WorkflowStore(db=db)
+        assert s.list_all() == []
 
     def test_save_creates_workflow(self, store: WorkflowStore) -> None:
         wf = store.save("Test WF", SAMPLE_NODES, SAMPLE_EDGES)
@@ -207,7 +209,8 @@ def client(tmp_path: Path):
     from pulsar_ai.ui.routes import workflows as wf_module
 
     original_store = wf_module._store
-    wf_module._store = WorkflowStore(store_path=tmp_path / "wf.json")
+    test_db = Database(tmp_path / "test_api.db")
+    wf_module._store = WorkflowStore(db=test_db)
     try:
         from pulsar_ai.ui.app import create_app
         app = create_app()

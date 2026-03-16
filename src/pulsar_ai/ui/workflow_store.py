@@ -1,4 +1,9 @@
-"""JSON-based workflow storage for visual pipeline builder."""
+"""SQLite-backed workflow storage for visual pipeline builder.
+
+Replaces the legacy JSON load-mutate-save pattern with direct SQL
+operations.  All public method signatures and return types are preserved
+for backward compatibility with routes and assistant.
+"""
 
 import json
 import logging
@@ -7,26 +12,28 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from pulsar_ai.storage.database import Database, get_database
+from pulsar_ai.storage.migration import migrate_workflows
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_STORE_PATH = Path("./data/workflows.json")
 SCHEMA_VERSION = 2
+DEFAULT_JSON_PATH = Path("./data/workflows.json")
 _GOV_NODE_TYPES = {"agent", "a2a", "router", "gateway"}
 _GOV_RISK_LEVELS = {"low", "medium", "high", "critical"}
 
 
 class WorkflowStore:
-    """CRUD operations for visual workflows stored as JSON.
+    """CRUD operations for visual workflows backed by SQLite.
 
     Args:
-        store_path: Path to the JSON file.
+        db: Database instance.  Uses the module singleton when *None*.
     """
 
-    def __init__(self, store_path: Path | None = None) -> None:
-        self.store_path = store_path or DEFAULT_STORE_PATH
-        self.store_path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.store_path.exists():
-            self._save([])
+    def __init__(self, db: Database | None = None) -> None:
+        self._db = db or get_database()
+        if db is None:
+            self._auto_migrate_json()
 
     def save(
         self,
@@ -46,37 +53,38 @@ class WorkflowStore:
         Returns:
             Saved workflow dict.
         """
-        workflows = self._load()
         normalized_nodes = [self._normalize_node(node) for node in nodes]
+        now_iso = datetime.now().isoformat()
+        nodes_json = json.dumps(normalized_nodes, ensure_ascii=False)
+        edges_json = json.dumps(edges, ensure_ascii=False)
 
         if workflow_id:
-            for wf in workflows:
-                if wf["id"] == workflow_id:
-                    wf["name"] = name
-                    wf["nodes"] = normalized_nodes
-                    wf["edges"] = edges
-                    wf["schema_version"] = SCHEMA_VERSION
-                    wf["updated_at"] = datetime.now().isoformat()
-                    self._save(workflows)
-                    return wf
-            # Not found, create new with this id
-            workflow_id = None
+            cursor = self._db.execute(
+                """
+                UPDATE workflows
+                SET name = ?, nodes = ?, edges = ?,
+                    schema_version = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (name, nodes_json, edges_json, SCHEMA_VERSION, now_iso, workflow_id),
+            )
+            self._db.commit()
+            if cursor.rowcount > 0:
+                return self.get(workflow_id)  # type: ignore[return-value]
 
-        workflow = {
-            "id": workflow_id or str(uuid.uuid4())[:8],
-            "name": name,
-            "nodes": normalized_nodes,
-            "edges": edges,
-            "schema_version": SCHEMA_VERSION,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-            "last_run": None,
-            "run_count": 0,
-        }
-        workflows.append(workflow)
-        self._save(workflows)
-        logger.info("Saved workflow %s: %s", workflow["id"], name)
-        return workflow
+        new_id = workflow_id or str(uuid.uuid4())[:8]
+        self._db.execute(
+            """
+            INSERT INTO workflows
+                (id, name, nodes, edges, schema_version,
+                 created_at, updated_at, last_run, run_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0)
+            """,
+            (new_id, name, nodes_json, edges_json, SCHEMA_VERSION, now_iso, now_iso),
+        )
+        self._db.commit()
+        logger.info("Saved workflow %s: %s", new_id, name)
+        return self.get(new_id)  # type: ignore[return-value]
 
     def get(self, workflow_id: str) -> dict | None:
         """Get a workflow by ID.
@@ -87,21 +95,23 @@ class WorkflowStore:
         Returns:
             Workflow dict or None.
         """
-        for wf in self._load():
-            if wf["id"] == workflow_id:
-                return self._normalize_workflow(wf)
-        return None
+        row = self._db.fetch_one(
+            "SELECT * FROM workflows WHERE id = ?", (workflow_id,)
+        )
+        if row is None:
+            return None
+        return self._row_to_dict(row)
 
     def list_all(self) -> list[dict]:
         """List all workflows (newest first).
 
         Returns:
-            List of workflow summary dicts.
+            List of workflow dicts.
         """
-        workflows = [self._normalize_workflow(w) for w in self._load()]
-        return sorted(
-            workflows, key=lambda w: w.get("updated_at", ""), reverse=True
+        rows = self._db.fetch_all(
+            "SELECT * FROM workflows ORDER BY updated_at DESC"
         )
+        return [self._row_to_dict(r) for r in rows]
 
     def delete(self, workflow_id: str) -> bool:
         """Delete a workflow.
@@ -112,13 +122,11 @@ class WorkflowStore:
         Returns:
             True if deleted, False if not found.
         """
-        workflows = self._load()
-        original = len(workflows)
-        workflows = [w for w in workflows if w["id"] != workflow_id]
-        if len(workflows) < original:
-            self._save(workflows)
-            return True
-        return False
+        cursor = self._db.execute(
+            "DELETE FROM workflows WHERE id = ?", (workflow_id,)
+        )
+        self._db.commit()
+        return cursor.rowcount > 0
 
     def mark_run(self, workflow_id: str) -> None:
         """Mark a workflow as having been run.
@@ -126,19 +134,19 @@ class WorkflowStore:
         Args:
             workflow_id: Workflow ID.
         """
-        workflows = self._load()
-        for wf in workflows:
-            if wf["id"] == workflow_id:
-                wf["last_run"] = datetime.now().isoformat()
-                wf["run_count"] = wf.get("run_count", 0) + 1
-                break
-        self._save(workflows)
+        now_iso = datetime.now().isoformat()
+        self._db.execute(
+            """
+            UPDATE workflows
+            SET last_run = ?, run_count = run_count + 1
+            WHERE id = ?
+            """,
+            (now_iso, workflow_id),
+        )
+        self._db.commit()
 
     def to_pipeline_config(self, workflow_id: str) -> dict | None:
         """Convert a workflow to PipelineExecutor-compatible config.
-
-        Transforms React Flow nodes/edges into pipeline YAML format
-        with steps and depends_on.
 
         Args:
             workflow_id: Workflow ID.
@@ -153,19 +161,18 @@ class WorkflowStore:
         nodes = wf["nodes"]
         edges = wf["edges"]
 
-        # Build dependency map: target_node_id -> [source_node_ids]
         deps: dict[str, list[str]] = {}
         for edge in edges:
-            target = edge["target"]
-            source = edge["source"]
-            deps.setdefault(target, []).append(source)
+            deps.setdefault(edge["target"], []).append(edge["source"])
 
-        # Node ID -> step name mapping
         node_names: dict[str, str] = {}
         for node in nodes:
-            node_names[node["id"]] = node.get("data", {}).get(
-                "label", node["id"]
-            ).lower().replace(" ", "_")
+            node_names[node["id"]] = (
+                node.get("data", {})
+                .get("label", node["id"])
+                .lower()
+                .replace(" ", "_")
+            )
 
         steps = []
         for node in nodes:
@@ -179,7 +186,6 @@ class WorkflowStore:
                 "config": data.get("config", {}),
             }
 
-            # Add depends_on from edges
             node_deps = deps.get(node["id"], [])
             if node_deps:
                 step["depends_on"] = [node_names[d] for d in node_deps]
@@ -190,6 +196,20 @@ class WorkflowStore:
             "pipeline": {"name": wf["name"]},
             "steps": steps,
         }
+
+    def migrate_from_json(self, json_path: Path | None = None) -> int:
+        """One-time migration from a legacy JSON store file.
+
+        Args:
+            json_path: Path to ``workflows.json``.
+
+        Returns:
+            Number of migrated workflows.
+        """
+        path = json_path or DEFAULT_JSON_PATH
+        return migrate_workflows(self._db, path)
+
+    # ── Internals ─────────────────────────────────────────────────────
 
     @staticmethod
     def _node_type_to_step_type(node_type: str) -> str:
@@ -212,12 +232,21 @@ class WorkflowStore:
         }
         return mapping.get(node_type, node_type)
 
-    def _normalize_workflow(self, workflow: dict[str, Any]) -> dict[str, Any]:
-        normalized = dict(workflow)
-        normalized["schema_version"] = normalized.get("schema_version", 1)
-        nodes = normalized.get("nodes", [])
-        normalized["nodes"] = [self._normalize_node(node) for node in nodes]
-        return normalized
+    def _row_to_dict(self, row: dict) -> dict:
+        """Convert a SQLite row into the legacy dict format."""
+        wf = {
+            "id": row["id"],
+            "name": row["name"],
+            "nodes": json.loads(row["nodes"] or "[]"),
+            "edges": json.loads(row["edges"] or "[]"),
+            "schema_version": row.get("schema_version", 1),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+            "last_run": row.get("last_run"),
+            "run_count": row.get("run_count", 0),
+        }
+        wf["nodes"] = [self._normalize_node(n) for n in wf["nodes"]]
+        return wf
 
     def _normalize_node(self, node: dict[str, Any]) -> dict[str, Any]:
         normalized_node = dict(node)
@@ -231,16 +260,27 @@ class WorkflowStore:
             if risk_level not in _GOV_RISK_LEVELS:
                 risk_level = "medium"
             config["risk_level"] = risk_level
-            config["requires_approval"] = bool(config.get("requires_approval", False))
+            config["requires_approval"] = bool(
+                config.get("requires_approval", False)
+            )
 
         data["config"] = config
         normalized_node["data"] = data
         return normalized_node
 
-    def _load(self) -> list[dict]:
-        with open(self.store_path, encoding="utf-8") as f:
-            return json.load(f)
+    def _auto_migrate_json(self) -> None:
+        """Auto-migrate from JSON if the SQLite table is empty and JSON exists."""
+        count_row = self._db.fetch_one(
+            "SELECT COUNT(*) as cnt FROM workflows"
+        )
+        if count_row and count_row["cnt"] > 0:
+            return
 
-    def _save(self, workflows: list[dict]) -> None:
-        with open(self.store_path, "w", encoding="utf-8") as f:
-            json.dump(workflows, f, ensure_ascii=False, indent=2)
+        if not DEFAULT_JSON_PATH.exists():
+            return
+
+        count = migrate_workflows(self._db, DEFAULT_JSON_PATH)
+        if count > 0:
+            logger.info(
+                "Auto-migrated %d workflows from %s", count, DEFAULT_JSON_PATH
+            )
