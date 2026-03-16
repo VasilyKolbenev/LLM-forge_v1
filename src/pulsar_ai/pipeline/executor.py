@@ -1,9 +1,9 @@
-"""DAG-based pipeline executor with variable substitution."""
+"""DAG-based pipeline executor with variable substitution and callbacks."""
 
 import logging
 import re
 import time
-from typing import Any
+from typing import Any, Protocol
 
 from pulsar_ai.pipeline.steps import check_condition, dispatch_step
 from pulsar_ai.pipeline.tracker import PipelineTracker
@@ -13,24 +13,79 @@ logger = logging.getLogger(__name__)
 _VAR_PATTERN = re.compile(r"\$\{(\w+)\.(\w+)\}")
 
 
+class PipelineCallback(Protocol):
+    """Protocol for pipeline execution callbacks."""
+
+    def on_pipeline_start(
+        self, pipeline_name: str, step_names: list[str]
+    ) -> None: ...
+
+    def on_step_start(self, step_name: str, step_type: str) -> None: ...
+
+    def on_step_complete(
+        self, step_name: str, result: dict[str, Any], duration_s: float
+    ) -> None: ...
+
+    def on_step_skip(self, step_name: str) -> None: ...
+
+    def on_step_fail(self, step_name: str, error: str) -> None: ...
+
+    def on_pipeline_complete(self, outputs: dict[str, Any]) -> None: ...
+
+    def on_pipeline_fail(self, step_name: str, error: str) -> None: ...
+
+
+class NullCallback:
+    """No-op callback for when no external listener is needed."""
+
+    def on_pipeline_start(
+        self, pipeline_name: str, step_names: list[str]
+    ) -> None:
+        pass
+
+    def on_step_start(self, step_name: str, step_type: str) -> None:
+        pass
+
+    def on_step_complete(
+        self, step_name: str, result: dict[str, Any], duration_s: float
+    ) -> None:
+        pass
+
+    def on_step_skip(self, step_name: str) -> None:
+        pass
+
+    def on_step_fail(self, step_name: str, error: str) -> None:
+        pass
+
+    def on_pipeline_complete(self, outputs: dict[str, Any]) -> None:
+        pass
+
+    def on_pipeline_fail(self, step_name: str, error: str) -> None:
+        pass
+
+
 class PipelineExecutor:
     """Execute a pipeline of training/eval/export steps in dependency order.
 
-    Supports ${step_name.output_key} variable substitution across steps.
+    Supports ${step_name.output_key} variable substitution across steps
+    and optional callbacks for unified execution monitoring.
 
     Args:
         pipeline_config: Parsed pipeline YAML config.
         tracker: Optional tracker for persisting run state.
+        callback: Optional callback for execution events.
     """
 
     def __init__(
         self,
         pipeline_config: dict,
         tracker: PipelineTracker | None = None,
+        callback: PipelineCallback | None = None,
     ) -> None:
         self.name = pipeline_config.get("pipeline", {}).get("name", "unnamed")
         self.steps = pipeline_config.get("steps", [])
         self.tracker = tracker or PipelineTracker(self.name)
+        self.callback: PipelineCallback = callback or NullCallback()
         self._outputs: dict[str, dict[str, Any]] = {}
 
     def run(self) -> dict[str, Any]:
@@ -51,6 +106,7 @@ class PipelineExecutor:
         )
 
         self.tracker.start_run(step_names=execution_order)
+        self.callback.on_pipeline_start(self.name, execution_order)
 
         for step_name in execution_order:
             step = self._get_step(step_name)
@@ -62,13 +118,16 @@ class PipelineExecutor:
                     "Skipping step '%s': condition not met", step_name
                 )
                 self.tracker.update_step(step_name, "skipped")
+                self.callback.on_step_skip(step_name)
                 self._outputs[step_name] = {"_skipped": True}
                 continue
 
             resolved_config = self._resolve_vars(step.get("config", {}))
 
-            logger.info("Running step: %s (type=%s)", step_name, step.get("type"))
+            step_type = step.get("type", "unknown")
+            logger.info("Running step: %s (type=%s)", step_name, step_type)
             self.tracker.update_step(step_name, "running")
+            self.callback.on_step_start(step_name, step_type)
 
             start = time.time()
             try:
@@ -82,15 +141,21 @@ class PipelineExecutor:
                 self.tracker.update_step(
                     step_name, "completed", result=result, duration_s=round(elapsed, 1)
                 )
+                self.callback.on_step_complete(
+                    step_name, result, round(elapsed, 1)
+                )
                 logger.info(
                     "Step '%s' completed in %.1fs", step_name, elapsed
                 )
             except Exception as e:
                 self.tracker.update_step(step_name, "failed", error=str(e))
+                self.callback.on_step_fail(step_name, str(e))
+                self.callback.on_pipeline_fail(step_name, str(e))
                 logger.exception("Step '%s' failed", step_name)
                 raise RuntimeError(f"Pipeline step '{step_name}' failed: {e}") from e
 
         self.tracker.finish_run()
+        self.callback.on_pipeline_complete(self._outputs)
         logger.info("Pipeline '%s' completed successfully", self.name)
         return self._outputs
 
