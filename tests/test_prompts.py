@@ -4,14 +4,20 @@ from pathlib import Path
 
 import pytest
 
+from pulsar_ai.storage.database import Database
 from pulsar_ai.prompts.store import PromptStore
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def store(tmp_path: Path) -> PromptStore:
-    return PromptStore(store_path=tmp_path / "prompts.json")
+def db(tmp_path: Path) -> Database:
+    return Database(tmp_path / "test.db")
+
+
+@pytest.fixture
+def store(db: Database) -> PromptStore:
+    return PromptStore(db=db)
 
 
 SAMPLE_PROMPT = "You are a {{role}}. Help the user with {{task}}."
@@ -20,11 +26,9 @@ SAMPLE_PROMPT = "You are a {{role}}. Help the user with {{task}}."
 # ── PromptStore Unit Tests ──────────────────────────────────────────────
 
 class TestPromptStore:
-    def test_init_creates_file(self, tmp_path: Path) -> None:
-        path = tmp_path / "p.json"
-        assert not path.exists()
-        PromptStore(store_path=path)
-        assert path.exists()
+    def test_init_creates_empty_store(self, db: Database) -> None:
+        s = PromptStore(db=db)
+        assert s.list_all() == []
 
     def test_create_prompt(self, store: PromptStore) -> None:
         p = store.create("Test Prompt", SAMPLE_PROMPT, description="A test")
@@ -185,7 +189,8 @@ def client(tmp_path: Path):
     from pulsar_ai.ui.routes import prompts as prompts_module
 
     original_store = prompts_module._store
-    prompts_module._store = PromptStore(store_path=tmp_path / "p.json")
+    test_db = Database(tmp_path / "test_api.db")
+    prompts_module._store = PromptStore(db=test_db)
     try:
         from pulsar_ai.ui.app import create_app
         app = create_app()

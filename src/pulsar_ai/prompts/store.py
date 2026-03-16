@@ -1,18 +1,26 @@
-"""JSON-based versioned prompt storage."""
+"""SQLite-backed versioned prompt storage.
+
+Replaces the legacy JSON load-mutate-save pattern with direct SQL
+operations via the Database class. All public method signatures and
+return types are preserved for backward compatibility.
+"""
 
 import json
 import logging
 import re
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from difflib import unified_diff
 from pathlib import Path
 from typing import Any
 
+from pulsar_ai.storage.database import Database, get_database
+from pulsar_ai.storage.migration import migrate_prompts
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_STORE_PATH = Path("./data/prompts.json")
+DEFAULT_JSON_PATH = Path("./data/prompts.json")
 
 
 @dataclass
@@ -43,17 +51,16 @@ class Prompt:
 
 
 class PromptStore:
-    """CRUD + versioning for prompts stored as JSON.
+    """CRUD + versioning for prompts backed by SQLite.
 
     Args:
-        store_path: Path to the JSON file.
+        db: Database instance.  Uses the module singleton when *None*.
     """
 
-    def __init__(self, store_path: Path | None = None) -> None:
-        self.store_path = store_path or DEFAULT_STORE_PATH
-        self.store_path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.store_path.exists():
-            self._save([])
+    def __init__(self, db: Database | None = None) -> None:
+        self._db = db or get_database()
+        if db is None:
+            self._auto_migrate_json()
 
     def create(
         self,
@@ -78,34 +85,46 @@ class PromptStore:
         Returns:
             Created prompt dict.
         """
-        prompts = self._load()
+        prompt_id = str(uuid.uuid4())[:8]
+        now_iso = datetime.now().isoformat()
         variables = self._extract_variables(system_prompt)
 
-        version = {
-            "version": 1,
-            "system_prompt": system_prompt,
-            "variables": variables,
-            "model": model,
-            "parameters": parameters or {},
-            "created_at": datetime.now().isoformat(),
-            "metrics": None,
-        }
+        self._db.execute(
+            """
+            INSERT INTO prompts
+                (id, name, description, current_version, tags,
+                 created_at, updated_at)
+            VALUES (?, ?, ?, 1, ?, ?, ?)
+            """,
+            (
+                prompt_id,
+                name,
+                description,
+                json.dumps(tags or [], ensure_ascii=False),
+                now_iso,
+                now_iso,
+            ),
+        )
 
-        prompt = {
-            "id": str(uuid.uuid4())[:8],
-            "name": name,
-            "description": description,
-            "current_version": 1,
-            "versions": [version],
-            "tags": tags or [],
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-        }
-
-        prompts.append(prompt)
-        self._save(prompts)
-        logger.info("Created prompt %s: %s", prompt["id"], name)
-        return prompt
+        self._db.execute(
+            """
+            INSERT INTO prompt_versions
+                (prompt_id, version, system_prompt, variables,
+                 model, parameters, metrics, created_at)
+            VALUES (?, 1, ?, ?, ?, ?, NULL, ?)
+            """,
+            (
+                prompt_id,
+                system_prompt,
+                json.dumps(variables, ensure_ascii=False),
+                model,
+                json.dumps(parameters or {}, ensure_ascii=False),
+                now_iso,
+            ),
+        )
+        self._db.commit()
+        logger.info("Created prompt %s: %s", prompt_id, name)
+        return self.get(prompt_id)  # type: ignore[return-value]
 
     def get(self, prompt_id: str) -> dict | None:
         """Get a prompt by ID with all versions.
@@ -116,10 +135,12 @@ class PromptStore:
         Returns:
             Prompt dict or None.
         """
-        for p in self._load():
-            if p["id"] == prompt_id:
-                return p
-        return None
+        row = self._db.fetch_one(
+            "SELECT * FROM prompts WHERE id = ?", (prompt_id,)
+        )
+        if row is None:
+            return None
+        return self._row_to_dict(row)
 
     def list_all(self, tag: str | None = None) -> list[dict]:
         """List all prompts, optionally filtered by tag.
@@ -130,12 +151,13 @@ class PromptStore:
         Returns:
             List of prompt dicts (newest first).
         """
-        prompts = self._load()
+        rows = self._db.fetch_all(
+            "SELECT * FROM prompts ORDER BY updated_at DESC"
+        )
+        prompts = [self._row_to_dict(r) for r in rows]
         if tag:
             prompts = [p for p in prompts if tag in p.get("tags", [])]
-        return sorted(
-            prompts, key=lambda p: p.get("updated_at", ""), reverse=True
-        )
+        return prompts
 
     def update(
         self,
@@ -156,19 +178,33 @@ class PromptStore:
         Returns:
             Updated prompt dict or None.
         """
-        prompts = self._load()
-        for p in prompts:
-            if p["id"] == prompt_id:
-                if name is not None:
-                    p["name"] = name
-                if description is not None:
-                    p["description"] = description
-                if tags is not None:
-                    p["tags"] = tags
-                p["updated_at"] = datetime.now().isoformat()
-                self._save(prompts)
-                return p
-        return None
+        existing = self._db.fetch_one(
+            "SELECT id FROM prompts WHERE id = ?", (prompt_id,)
+        )
+        if existing is None:
+            return None
+
+        now_iso = datetime.now().isoformat()
+        if name is not None:
+            self._db.execute(
+                "UPDATE prompts SET name = ? WHERE id = ?", (name, prompt_id)
+            )
+        if description is not None:
+            self._db.execute(
+                "UPDATE prompts SET description = ? WHERE id = ?",
+                (description, prompt_id),
+            )
+        if tags is not None:
+            self._db.execute(
+                "UPDATE prompts SET tags = ? WHERE id = ?",
+                (json.dumps(tags, ensure_ascii=False), prompt_id),
+            )
+        self._db.execute(
+            "UPDATE prompts SET updated_at = ? WHERE id = ?",
+            (now_iso, prompt_id),
+        )
+        self._db.commit()
+        return self.get(prompt_id)
 
     def add_version(
         self,
@@ -189,30 +225,72 @@ class PromptStore:
         Returns:
             New version dict or None if prompt not found.
         """
-        prompts = self._load()
-        for p in prompts:
-            if p["id"] == prompt_id:
-                prev = p["versions"][-1]
-                new_version = len(p["versions"]) + 1
-                variables = self._extract_variables(system_prompt)
+        prompt_row = self._db.fetch_one(
+            "SELECT id, current_version FROM prompts WHERE id = ?",
+            (prompt_id,),
+        )
+        if prompt_row is None:
+            return None
 
-                version = {
-                    "version": new_version,
-                    "system_prompt": system_prompt,
-                    "variables": variables,
-                    "model": model if model is not None else prev.get("model", ""),
-                    "parameters": parameters if parameters is not None else prev.get("parameters", {}),
-                    "created_at": datetime.now().isoformat(),
-                    "metrics": None,
-                }
+        prev_version = self._db.fetch_one(
+            """
+            SELECT model, parameters FROM prompt_versions
+            WHERE prompt_id = ? AND version = ?
+            """,
+            (prompt_id, prompt_row["current_version"]),
+        )
 
-                p["versions"].append(version)
-                p["current_version"] = new_version
-                p["updated_at"] = datetime.now().isoformat()
-                self._save(prompts)
-                logger.info("Added version %d to prompt %s", new_version, prompt_id)
-                return version
-        return None
+        new_version_num = prompt_row["current_version"] + 1
+        variables = self._extract_variables(system_prompt)
+        now_iso = datetime.now().isoformat()
+
+        resolved_model = model if model is not None else (
+            prev_version["model"] if prev_version else ""
+        )
+        resolved_params = parameters if parameters is not None else (
+            json.loads(prev_version["parameters"] or "{}")
+            if prev_version
+            else {}
+        )
+
+        self._db.execute(
+            """
+            INSERT INTO prompt_versions
+                (prompt_id, version, system_prompt, variables,
+                 model, parameters, metrics, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
+            """,
+            (
+                prompt_id,
+                new_version_num,
+                system_prompt,
+                json.dumps(variables, ensure_ascii=False),
+                resolved_model,
+                json.dumps(resolved_params, ensure_ascii=False),
+                now_iso,
+            ),
+        )
+
+        self._db.execute(
+            """
+            UPDATE prompts
+            SET current_version = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (new_version_num, now_iso, prompt_id),
+        )
+        self._db.commit()
+        logger.info("Added version %d to prompt %s", new_version_num, prompt_id)
+
+        return self._version_row_to_dict(
+            self._db.fetch_one(
+                """
+                SELECT * FROM prompt_versions
+                WHERE prompt_id = ? AND version = ?
+                """,
+                (prompt_id, new_version_num),
+            )
+        )
 
     def get_version(self, prompt_id: str, version: int) -> dict | None:
         """Get a specific version of a prompt.
@@ -224,13 +302,16 @@ class PromptStore:
         Returns:
             Version dict or None.
         """
-        prompt = self.get(prompt_id)
-        if not prompt:
+        row = self._db.fetch_one(
+            """
+            SELECT * FROM prompt_versions
+            WHERE prompt_id = ? AND version = ?
+            """,
+            (prompt_id, version),
+        )
+        if row is None:
             return None
-        for v in prompt["versions"]:
-            if v["version"] == version:
-                return v
-        return None
+        return self._version_row_to_dict(row)
 
     def diff_versions(self, prompt_id: str, v1: int, v2: int) -> dict | None:
         """Generate a unified diff between two versions.
@@ -262,12 +343,16 @@ class PromptStore:
             "diff": "".join(diff_lines),
             "v1_variables": ver1["variables"],
             "v2_variables": ver2["variables"],
-            "variables_added": [v for v in ver2["variables"] if v not in ver1["variables"]],
-            "variables_removed": [v for v in ver1["variables"] if v not in ver2["variables"]],
+            "variables_added": [
+                v for v in ver2["variables"] if v not in ver1["variables"]
+            ],
+            "variables_removed": [
+                v for v in ver1["variables"] if v not in ver2["variables"]
+            ],
         }
 
     def delete(self, prompt_id: str) -> bool:
-        """Delete a prompt.
+        """Delete a prompt and all its versions (cascade).
 
         Args:
             prompt_id: Prompt ID.
@@ -275,23 +360,84 @@ class PromptStore:
         Returns:
             True if deleted, False if not found.
         """
-        prompts = self._load()
-        original = len(prompts)
-        prompts = [p for p in prompts if p["id"] != prompt_id]
-        if len(prompts) < original:
-            self._save(prompts)
-            return True
-        return False
+        cursor = self._db.execute(
+            "DELETE FROM prompts WHERE id = ?", (prompt_id,)
+        )
+        self._db.commit()
+        return cursor.rowcount > 0
+
+    def migrate_from_json(self, json_path: Path | None = None) -> int:
+        """One-time migration from a legacy JSON store file.
+
+        Args:
+            json_path: Path to ``prompts.json``.
+
+        Returns:
+            Number of migrated prompts.
+        """
+        path = json_path or DEFAULT_JSON_PATH
+        return migrate_prompts(self._db, path)
+
+    # ── Internals ─────────────────────────────────────────────────────
 
     @staticmethod
     def _extract_variables(text: str) -> list[str]:
         """Extract {{variable}} placeholders from prompt text."""
         return sorted(set(re.findall(r"\{\{(\w+)\}\}", text)))
 
-    def _load(self) -> list[dict]:
-        with open(self.store_path, encoding="utf-8") as f:
-            return json.load(f)
+    def _row_to_dict(self, row: dict) -> dict:
+        """Convert a prompts row + its versions into the legacy dict format."""
+        version_rows = self._db.fetch_all(
+            """
+            SELECT * FROM prompt_versions
+            WHERE prompt_id = ?
+            ORDER BY version
+            """,
+            (row["id"],),
+        )
+        versions = [self._version_row_to_dict(v) for v in version_rows]
 
-    def _save(self, prompts: list[dict]) -> None:
-        with open(self.store_path, "w", encoding="utf-8") as f:
-            json.dump(prompts, f, ensure_ascii=False, indent=2)
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "description": row.get("description", ""),
+            "current_version": row["current_version"],
+            "versions": versions,
+            "tags": json.loads(row["tags"] or "[]"),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    @staticmethod
+    def _version_row_to_dict(row: dict | None) -> dict:
+        """Convert a prompt_versions row into dict format."""
+        if row is None:
+            return {}
+        return {
+            "version": row["version"],
+            "system_prompt": row["system_prompt"],
+            "variables": json.loads(row["variables"] or "[]"),
+            "model": row.get("model", ""),
+            "parameters": json.loads(row["parameters"] or "{}"),
+            "created_at": row["created_at"],
+            "metrics": (
+                json.loads(row["metrics"]) if row.get("metrics") else None
+            ),
+        }
+
+    def _auto_migrate_json(self) -> None:
+        """Auto-migrate from JSON if the SQLite table is empty and JSON exists."""
+        count_row = self._db.fetch_one(
+            "SELECT COUNT(*) as cnt FROM prompts"
+        )
+        if count_row and count_row["cnt"] > 0:
+            return
+
+        if not DEFAULT_JSON_PATH.exists():
+            return
+
+        count = migrate_prompts(self._db, DEFAULT_JSON_PATH)
+        if count > 0:
+            logger.info(
+                "Auto-migrated %d prompts from %s", count, DEFAULT_JSON_PATH
+            )
