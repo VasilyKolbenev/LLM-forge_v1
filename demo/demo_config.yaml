@@ -1,0 +1,36 @@
+# Demo config: Quick fine-tuning for investor demo
+# Trains in ~2 minutes on a single GPU
+# Model: TinyLlama-1.1B (small, fast, fits in any GPU)
+
+model:
+  name: TinyLlama/TinyLlama-1.1B-Chat-v1.0
+
+dataset:
+  path: demo/intent_train.jsonl
+  format: alpaca
+  test_size: 0.1
+
+training:
+  epochs: 2
+  learning_rate: 2e-4
+  batch_size: 2
+  gradient_accumulation: 4
+  max_seq_length: 256
+  warmup_steps: 5
+  logging_steps: 5
+  seed: 42
+  optimizer: adamw_8bit
+
+lora:
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - v_proj
+
+strategy: auto
+
+output:
+  dir: ./outputs/demo-run
+  save_adapter: true

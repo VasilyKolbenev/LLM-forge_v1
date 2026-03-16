@@ -270,14 +270,17 @@ export function Landing() {
           animate="visible"
           variants={stagger}
         >
-          <motion.h1
-            className="text-6xl md:text-7xl font-extrabold tracking-tight mb-4"
+          <motion.div
+            className="flex items-center justify-center gap-4 mb-4"
             variants={fadeUp}
             custom={0}
           >
-            <span className="text-primary">Pulsar</span>{" "}
-            <span className="text-foreground">AI</span>
-          </motion.h1>
+            <img src="/logo.svg" alt="Pulsar AI" className="w-16 h-16 md:w-20 md:h-20" />
+            <h1 className="text-6xl md:text-7xl font-extrabold tracking-tight">
+              <span className="text-primary">Pulsar</span>{" "}
+              <span className="text-foreground">AI</span>
+            </h1>
+          </motion.div>
 
           <motion.p
             className="text-xl md:text-2xl font-medium text-muted-foreground mb-2"

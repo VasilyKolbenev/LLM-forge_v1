@@ -33,11 +33,14 @@ export function Sidebar() {
 
   return (
     <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col">
-      <div className="p-4 border-b border-border">
-        <h1 className="text-lg font-bold tracking-tight">
-          <span className="text-primary">Pulsar</span> AI
-        </h1>
-        <p className="text-xs text-muted-foreground mt-0.5">Fine-tuning Platform</p>
+      <div className="p-4 border-b border-border flex items-center gap-2.5">
+        <img src="/logo.svg" alt="Pulsar AI" className="w-8 h-8" />
+        <div>
+          <h1 className="text-lg font-bold tracking-tight leading-tight">
+            <span className="text-primary">Pulsar</span> AI
+          </h1>
+          <p className="text-[10px] text-muted-foreground">Fine-tuning Platform</p>
+        </div>
       </div>
       <nav className="flex-1 p-2 space-y-1">
         {links.map(({ to, icon: Icon, label }) => (

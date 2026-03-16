@@ -1,0 +1,50 @@
+{"instruction": "Classify the customer intent", "input": "I want to cancel my subscription", "output": "cancellation"}
+{"instruction": "Classify the customer intent", "input": "How do I upgrade my plan?", "output": "upgrade"}
+{"instruction": "Classify the customer intent", "input": "I need help with my password", "output": "password_reset"}
+{"instruction": "Classify the customer intent", "input": "When will my order arrive?", "output": "order_tracking"}
+{"instruction": "Classify the customer intent", "input": "I'd like a refund please", "output": "refund"}
+{"instruction": "Classify the customer intent", "input": "Can I change my delivery address?", "output": "order_modification"}
+{"instruction": "Classify the customer intent", "input": "Your app keeps crashing", "output": "bug_report"}
+{"instruction": "Classify the customer intent", "input": "How much does the premium plan cost?", "output": "pricing"}
+{"instruction": "Classify the customer intent", "input": "I can't log into my account", "output": "login_issue"}
+{"instruction": "Classify the customer intent", "input": "Do you offer student discounts?", "output": "pricing"}
+{"instruction": "Classify the customer intent", "input": "I want to delete my account permanently", "output": "cancellation"}
+{"instruction": "Classify the customer intent", "input": "The payment failed but money was deducted", "output": "billing_issue"}
+{"instruction": "Classify the customer intent", "input": "Can I get a demo of the enterprise features?", "output": "sales"}
+{"instruction": "Classify the customer intent", "input": "My API key is not working", "output": "technical_issue"}
+{"instruction": "Classify the customer intent", "input": "I love the new feature update!", "output": "feedback"}
+{"instruction": "Classify the customer intent", "input": "How do I integrate with Slack?", "output": "integration"}
+{"instruction": "Classify the customer intent", "input": "Is there a free trial available?", "output": "pricing"}
+{"instruction": "Classify the customer intent", "input": "I need to speak with a manager", "output": "escalation"}
+{"instruction": "Classify the customer intent", "input": "Can you export my data?", "output": "data_export"}
+{"instruction": "Classify the customer intent", "input": "The dashboard loads very slowly", "output": "bug_report"}
+{"instruction": "Classify the customer intent", "input": "How do I add team members?", "output": "account_management"}
+{"instruction": "Classify the customer intent", "input": "I was charged twice this month", "output": "billing_issue"}
+{"instruction": "Classify the customer intent", "input": "What's new in the latest release?", "output": "product_info"}
+{"instruction": "Classify the customer intent", "input": "Can I schedule a training session?", "output": "sales"}
+{"instruction": "Classify the customer intent", "input": "The notification emails are too frequent", "output": "settings"}
+{"instruction": "Classify the customer intent", "input": "I forgot my username", "output": "login_issue"}
+{"instruction": "Classify the customer intent", "input": "Do you support SSO authentication?", "output": "technical_issue"}
+{"instruction": "Classify the customer intent", "input": "I want to switch from monthly to annual billing", "output": "upgrade"}
+{"instruction": "Classify the customer intent", "input": "The mobile app is missing features", "output": "feedback"}
+{"instruction": "Classify the customer intent", "input": "How secure is my data with you?", "output": "security"}
+{"instruction": "Classify the customer intent", "input": "I need an invoice for tax purposes", "output": "billing_issue"}
+{"instruction": "Classify the customer intent", "input": "Can I transfer my license to another user?", "output": "account_management"}
+{"instruction": "Classify the customer intent", "input": "The search function returns wrong results", "output": "bug_report"}
+{"instruction": "Classify the customer intent", "input": "What integrations do you support?", "output": "integration"}
+{"instruction": "Classify the customer intent", "input": "I'm very disappointed with the service", "output": "complaint"}
+{"instruction": "Classify the customer intent", "input": "How do I set up two-factor authentication?", "output": "security"}
+{"instruction": "Classify the customer intent", "input": "Can I pause my subscription instead of canceling?", "output": "cancellation"}
+{"instruction": "Classify the customer intent", "input": "I need help setting up the webhook", "output": "technical_issue"}
+{"instruction": "Classify the customer intent", "input": "Thank you for the quick response!", "output": "feedback"}
+{"instruction": "Classify the customer intent", "input": "Where can I find the API documentation?", "output": "product_info"}
+{"instruction": "Classify the customer intent", "input": "I want to downgrade my plan", "output": "downgrade"}
+{"instruction": "Classify the customer intent", "input": "My files are not syncing properly", "output": "bug_report"}
+{"instruction": "Classify the customer intent", "input": "Can you recommend the best plan for a startup?", "output": "sales"}
+{"instruction": "Classify the customer intent", "input": "I accidentally deleted important data", "output": "data_recovery"}
+{"instruction": "Classify the customer intent", "input": "How do I use the batch processing feature?", "output": "product_info"}
+{"instruction": "Classify the customer intent", "input": "The checkout page shows an error", "output": "bug_report"}
+{"instruction": "Classify the customer intent", "input": "I want to provide feedback on the UI", "output": "feedback"}
+{"instruction": "Classify the customer intent", "input": "My team needs custom reporting", "output": "feature_request"}
+{"instruction": "Classify the customer intent", "input": "When is the next maintenance window?", "output": "product_info"}
+{"instruction": "Classify the customer intent", "input": "I need help migrating from another platform", "output": "onboarding"}
