@@ -84,12 +84,12 @@
 - [ ] Task 13d: Remote compute hardening (shlex, retry)
 
 ### Chunk 3: UI (Tasks 14-16d) — Дни 3-5
-- [ ] Task 14: Toast notification system
-- [ ] Task 15: Empty states
-- [ ] Task 16: Dashboard upgrade (metrics, activity feed)
-- [ ] Task 16b: Design system components (Card, Badge, MetricCard, StatusDot)
-- [ ] Task 16c: Page decomposition (Experiments, PromptLab)
-- [ ] Task 16d: UX improvements (Breadcrumbs, Skeletons)
+- [x] Task 14: Toast notification system
+- [x] Task 15: Empty states
+- [x] Task 16: Dashboard upgrade (metrics, activity feed)
+- [x] Task 16b: Design system components (Card, Badge, MetricCard, StatusDot)
+- [x] Task 16c: Page decomposition (Experiments, PromptLab)
+- [x] Task 16d: UX improvements (Breadcrumbs, Skeletons)
 
 ### Chunk 4: Quality (Tasks 17-20) — Дни 5-6
 - [ ] Task 17: Test infrastructure (conftest.py, pytest config)
