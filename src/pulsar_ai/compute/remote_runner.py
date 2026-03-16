@@ -2,6 +2,8 @@
 
 import json
 import logging
+import re
+import shlex
 import tempfile
 import uuid
 from dataclasses import dataclass, asdict
@@ -13,6 +15,9 @@ from pulsar_ai.compute.ssh import SSHConnection
 from pulsar_ai.compute.manager import ComputeTarget
 
 logger = logging.getLogger(__name__)
+
+_SAFE_TASK_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
+_SAFE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 @dataclass
@@ -87,7 +92,7 @@ class RemoteJobRunner:
             remote_dir: Remote directory to put files in.
         """
         conn = self._get_connection()
-        conn.exec_command(f"mkdir -p {remote_dir}")
+        conn.exec_command(f"mkdir -p {shlex.quote(remote_dir)}")
         for path in local_paths:
             if path.exists():
                 remote_path = f"{remote_dir}/{path.name}"
@@ -107,35 +112,44 @@ class RemoteJobRunner:
 
         Returns:
             Job ID string.
+
+        Raises:
+            ValueError: If task contains unsafe characters.
         """
+        if not _SAFE_TASK_RE.match(task):
+            raise ValueError(f"Invalid task name: {task!r}")
+
         job_id = str(uuid.uuid4())[:8]
         conn = self._get_connection()
 
         remote_job_dir = f"{self.REMOTE_WORK_DIR}/{job_id}"
-        conn.exec_command(f"mkdir -p {remote_job_dir}")
+        conn.exec_command(f"mkdir -p {shlex.quote(remote_job_dir)}")
 
         # Write config to remote via SFTP (safe from shell injection)
         self._write_remote_json(conn, config, f"{remote_job_dir}/config.json")
 
-        # Build training command
+        # Build training command — all interpolated values are quoted
+        q_dir = shlex.quote(remote_job_dir)
+        q_task = shlex.quote(task)
         num_gpus = self.target.gpu_count or 1
         if num_gpus > 1:
             train_cmd = (
-                f"cd {remote_job_dir} && "
-                f"torchrun --nproc_per_node={num_gpus} "
+                f"cd {q_dir} && "
+                f"torchrun --nproc_per_node={int(num_gpus)} "
                 f"-m pulsar_ai.training._distributed_entry "
-                f"--config config.json --task {task}"
+                f"--config config.json --task {q_task}"
             )
         else:
             train_cmd = (
-                f"cd {remote_job_dir} && "
-                f"python -m pulsar_ai.cli train config.json --task {task}"
+                f"cd {q_dir} && "
+                f"python -m pulsar_ai.cli train config.json --task {q_task}"
             )
 
         # Launch in background with nohup
+        q_log = shlex.quote(f"{remote_job_dir}/output.log")
         launch_cmd = (
-            f"nohup bash -c '{train_cmd}' "
-            f"> {remote_job_dir}/output.log 2>&1 & "
+            f"nohup bash -c {shlex.quote(train_cmd)} "
+            f"> {q_log} 2>&1 & "
             f"echo $!"
         )
 
@@ -168,13 +182,19 @@ class RemoteJobRunner:
 
         Returns:
             RemoteJobStatus with current state.
+
+        Raises:
+            ValueError: If job_id contains unsafe characters.
         """
+        if not _SAFE_ID_RE.match(job_id):
+            raise ValueError(f"Invalid job_id: {job_id!r}")
+
         conn = self._get_connection()
-        remote_job_dir = f"{self.REMOTE_WORK_DIR}/{job_id}"
+        q_dir = shlex.quote(f"{self.REMOTE_WORK_DIR}/{job_id}")
 
         # Read job metadata
         stdout, _, code = conn.exec_command(
-            f"cat {remote_job_dir}/job_meta.json 2>/dev/null"
+            f"cat {q_dir}/job_meta.json 2>/dev/null"
         )
         if code != 0:
             return RemoteJobStatus(
@@ -188,13 +208,26 @@ class RemoteJobRunner:
         meta = json.loads(stdout)
         pid = meta.get("pid", "")
 
+        # Validate PID is numeric before using in shell
+        if not str(pid).isdigit():
+            logger.warning("Invalid PID %r in job metadata for %s", pid, job_id)
+            return RemoteJobStatus(
+                job_id=job_id,
+                target_id=self.target.id,
+                status="unknown",
+                started_at=meta.get("started_at", ""),
+                log_tail=[],
+            )
+
         # Check if process is still running
-        check_stdout, _, _ = conn.exec_command(f"kill -0 {pid} 2>/dev/null && echo running || echo done")
+        check_stdout, _, _ = conn.exec_command(
+            f"kill -0 {int(pid)} 2>/dev/null && echo running || echo done"
+        )
         is_running = "running" in check_stdout
 
         # Get log tail
         log_stdout, _, _ = conn.exec_command(
-            f"tail -n 20 {remote_job_dir}/output.log 2>/dev/null"
+            f"tail -n 20 {q_dir}/output.log 2>/dev/null"
         )
         log_lines = log_stdout.strip().splitlines() if log_stdout.strip() else []
 
@@ -204,7 +237,7 @@ class RemoteJobRunner:
         exit_code = None
         if not is_running:
             exit_stdout, _, _ = conn.exec_command(
-                f"cat {remote_job_dir}/exit_code 2>/dev/null"
+                f"cat {q_dir}/exit_code 2>/dev/null"
             )
             if exit_stdout.strip().isdigit():
                 exit_code = int(exit_stdout.strip())
@@ -229,7 +262,12 @@ class RemoteJobRunner:
 
         Yields:
             Log lines from the remote job.
+
+        Raises:
+            ValueError: If job_id contains unsafe characters.
         """
+        if not _SAFE_ID_RE.match(job_id):
+            raise ValueError(f"Invalid job_id: {job_id!r}")
         conn = self._get_connection()
         remote_log = f"{self.REMOTE_WORK_DIR}/{job_id}/output.log"
         yield from conn.tail_file(remote_log, lines=lines)
@@ -242,22 +280,29 @@ class RemoteJobRunner:
 
         Returns:
             True if cancelled, False otherwise.
+
+        Raises:
+            ValueError: If job_id contains unsafe characters.
         """
+        if not _SAFE_ID_RE.match(job_id):
+            raise ValueError(f"Invalid job_id: {job_id!r}")
+
         conn = self._get_connection()
-        remote_job_dir = f"{self.REMOTE_WORK_DIR}/{job_id}"
+        q_dir = shlex.quote(f"{self.REMOTE_WORK_DIR}/{job_id}")
 
         stdout, _, code = conn.exec_command(
-            f"cat {remote_job_dir}/job_meta.json 2>/dev/null"
+            f"cat {q_dir}/job_meta.json 2>/dev/null"
         )
         if code != 0:
             return False
 
         meta = json.loads(stdout)
         pid = meta.get("pid", "")
-        if not pid:
+        if not str(pid).isdigit():
+            logger.warning("Invalid PID %r in job %s", pid, job_id)
             return False
 
-        _, _, kill_code = conn.exec_command(f"kill {pid} 2>/dev/null")
+        _, _, kill_code = conn.exec_command(f"kill {int(pid)} 2>/dev/null")
         logger.info("Cancelled remote job %s (PID: %s)", job_id, pid)
         return True
 
@@ -270,7 +315,13 @@ class RemoteJobRunner:
 
         Returns:
             List of downloaded file paths.
+
+        Raises:
+            ValueError: If job_id contains unsafe characters.
         """
+        if not _SAFE_ID_RE.match(job_id):
+            raise ValueError(f"Invalid job_id: {job_id!r}")
+
         conn = self._get_connection()
         remote_job_dir = f"{self.REMOTE_WORK_DIR}/{job_id}"
 
@@ -278,7 +329,7 @@ class RemoteJobRunner:
 
         # List remote artifacts
         stdout, _, _ = conn.exec_command(
-            f"ls {remote_job_dir}/outputs/ 2>/dev/null"
+            f"ls {shlex.quote(remote_job_dir + '/outputs/')} 2>/dev/null"
         )
         files = [f.strip() for f in stdout.splitlines() if f.strip()]
 

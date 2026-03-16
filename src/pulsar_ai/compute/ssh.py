@@ -1,11 +1,16 @@
 """SSH connection wrapper for remote GPU operations."""
 
 import logging
+import shlex
 import subprocess
+import time
 from pathlib import Path
 from typing import Generator
 
 logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+RETRY_BASE_DELAY = 2  # seconds (exponential backoff: 2, 4, 8)
 
 
 class SSHConnection:
@@ -34,33 +39,55 @@ class SSHConnection:
         self.key_path = key_path
         self._client = None
 
-    def connect(self) -> None:
-        """Establish SSH connection."""
+    def connect(self, retries: int = MAX_RETRIES) -> None:
+        """Establish SSH connection with exponential backoff.
+
+        Args:
+            retries: Number of retry attempts on transient failure.
+        """
         try:
             import paramiko
-
-            client = paramiko.SSHClient()
-            # Load known hosts for MITM protection
-            known_hosts = Path.home() / ".ssh" / "known_hosts"
-            if known_hosts.exists():
-                client.load_host_keys(str(known_hosts))
-            client.set_missing_host_key_policy(paramiko.WarningPolicy())
-
-            connect_kwargs: dict = {
-                "hostname": self.host,
-                "username": self.user,
-                "port": self.port,
-                "timeout": 10,
-            }
-            if self.key_path:
-                connect_kwargs["key_filename"] = self.key_path
-
-            client.connect(**connect_kwargs)
-            self._client = client
-            logger.info("SSH connected to %s@%s:%d", self.user, self.host, self.port)
         except ImportError:
             logger.warning("paramiko not installed, SSH operations will use subprocess")
             self._client = None
+            return
+
+        client = paramiko.SSHClient()
+        known_hosts = Path.home() / ".ssh" / "known_hosts"
+        if known_hosts.exists():
+            client.load_host_keys(str(known_hosts))
+        client.set_missing_host_key_policy(paramiko.WarningPolicy())
+
+        connect_kwargs: dict = {
+            "hostname": self.host,
+            "username": self.user,
+            "port": self.port,
+            "timeout": 10,
+        }
+        if self.key_path:
+            connect_kwargs["key_filename"] = self.key_path
+
+        last_exc: Exception | None = None
+        for attempt in range(retries):
+            try:
+                client.connect(**connect_kwargs)
+                self._client = client
+                logger.info("SSH connected to %s@%s:%d", self.user, self.host, self.port)
+                return
+            except (OSError, paramiko.SSHException) as exc:
+                last_exc = exc
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(
+                    "SSH connect attempt %d/%d failed: %s — retrying in %ds",
+                    attempt + 1, retries, exc, delay,
+                )
+                if attempt < retries - 1:
+                    time.sleep(delay)
+
+        raise ConnectionError(
+            f"Failed to connect to {self.user}@{self.host}:{self.port} "
+            f"after {retries} attempts: {last_exc}"
+        )
 
     def exec_command(
         self, cmd: str, timeout: int = 300
@@ -141,7 +168,9 @@ class SSHConnection:
         Yields:
             Lines from the remote file.
         """
-        stdout, _, _ = self.exec_command(f"tail -n {lines} {path}")
+        stdout, _, _ = self.exec_command(
+            f"tail -n {int(lines)} {shlex.quote(path)}"
+        )
         for line in stdout.splitlines():
             yield line
 
