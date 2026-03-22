@@ -8,7 +8,7 @@ Schema version is tracked in ``_schema_meta`` so future migrations
 can inspect the current version before applying ALTER TABLE / new tables.
 """
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 BOOTSTRAP_SQL = """
 -- ── Meta ────────────────────────────────────────────────────────────
@@ -183,4 +183,43 @@ CREATE TABLE IF NOT EXISTS api_key_events (
     timestamp   TEXT NOT NULL,
     ip_address  TEXT DEFAULT ''
 );
+
+-- ── Traces (agent execution traces) ─────────────────────────────
+CREATE TABLE IF NOT EXISTS traces (
+    trace_id      TEXT PRIMARY KEY,
+    agent_id      TEXT DEFAULT '',
+    model_name    TEXT DEFAULT '',
+    model_version TEXT DEFAULT '',
+    user_query    TEXT NOT NULL,
+    response      TEXT DEFAULT '',
+    trace_json    TEXT DEFAULT '[]',
+    status        TEXT DEFAULT 'success',
+    tokens_used   INTEGER DEFAULT 0,
+    cost          REAL DEFAULT 0.0,
+    latency_ms    INTEGER DEFAULT 0,
+    created_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_traces_created
+    ON traces(created_at);
+CREATE INDEX IF NOT EXISTS idx_traces_model
+    ON traces(model_name);
+CREATE INDEX IF NOT EXISTS idx_traces_status
+    ON traces(status);
+
+-- ── Trace Feedback ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS trace_feedback (
+    id            TEXT PRIMARY KEY,
+    trace_id      TEXT NOT NULL REFERENCES traces(trace_id),
+    feedback_type TEXT NOT NULL DEFAULT 'thumbs',
+    rating        REAL DEFAULT 0,
+    reason        TEXT DEFAULT '',
+    chosen        TEXT DEFAULT '',
+    rejected      TEXT DEFAULT '',
+    user_id       TEXT DEFAULT '',
+    created_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_trace_feedback_trace
+    ON trace_feedback(trace_id);
 """
