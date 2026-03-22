@@ -285,6 +285,10 @@ _TRACKED_PACKAGES = {
     "wandb",
     "optuna",
     "pulsar-ai",
+    "sentence-transformers",
+    "autoawq",
+    "auto-gptq",
+    "sglang",
 }
 
 

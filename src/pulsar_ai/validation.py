@@ -10,6 +10,10 @@ _REQUIRED_KEYS: dict[str, list[str]] = {
     "sft": ["model.name", "dataset.path"],
     "dpo": ["model.name", "sft_adapter_path|base_model_path", "dpo.pairs_path"],
     "eval": ["model_path", "test_data_path"],
+    "grpo": ["model.name", "dataset.path"],
+    "embedding": ["model.name", "dataset.path"],
+    "reranker": ["model.name", "dataset.path"],
+    "classification": ["model.name", "dataset.path"],
 }
 
 # Known top-level keys (warnings for typos)
@@ -58,6 +62,13 @@ _KNOWN_KEYS = {
     "memory",
     "guardrails",
     "resume_from_checkpoint",
+    "grpo",
+    "reward_function",
+    "num_generations",
+    "max_completion_length",
+    "embedding",
+    "reranker",
+    "classification",
 }
 
 
@@ -143,6 +154,20 @@ def validate_config(config: dict, task: Optional[str] = None) -> list[str]:
         batch_size = training.get("batch_size")
         if batch_size is not None and (not isinstance(batch_size, int) or batch_size < 1):
             errors.append(f"training.batch_size must be a positive integer, got: {batch_size}")
+
+    # GRPO-specific validation
+    if task == "grpo":
+        grpo = config.get("grpo", {})
+        num_gen = grpo.get("num_generations")
+        if num_gen is not None and (not isinstance(num_gen, int) or num_gen < 1):
+            errors.append(
+                f"grpo.num_generations must be a positive integer, got: {num_gen}"
+            )
+        max_comp = grpo.get("max_completion_length")
+        if max_comp is not None and (not isinstance(max_comp, int) or max_comp < 1):
+            errors.append(
+                f"grpo.max_completion_length must be a positive integer, got: {max_comp}"
+            )
 
     return errors
 
