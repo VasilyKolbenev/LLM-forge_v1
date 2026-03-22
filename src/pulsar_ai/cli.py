@@ -172,8 +172,7 @@ def train(
                 from pulsar_ai.training.grpo import train_grpo
             except ImportError:
                 console.print(
-                    "[red]GRPO requires TRL >= 0.14.[/red]"
-                    " Install: pip install 'trl>=0.14,<1.0'"
+                    "[red]GRPO requires TRL >= 0.14.[/red]" " Install: pip install 'trl>=0.14,<1.0'"
                 )
                 sys.exit(1)
             results = train_grpo(config, progress=progress)
@@ -1274,9 +1273,7 @@ def recipes_list(
     from pulsar_ai.recipes import RecipeRegistry
 
     registry = RecipeRegistry()
-    items = registry.list_recipes(
-        task_type=task_type, tag=tag, difficulty=difficulty
-    )
+    items = registry.list_recipes(task_type=task_type, tag=tag, difficulty=difficulty)
 
     if not items:
         console.print("[dim]No recipes found.[/dim]")
@@ -1356,8 +1353,7 @@ def recipes_run(name: str, overrides: tuple[str, ...]) -> None:
                 from pulsar_ai.training.grpo import train_grpo
             except ImportError:
                 console.print(
-                    "[red]GRPO requires TRL >= 0.14.[/red]"
-                    " Install: pip install 'trl>=0.14,<1.0'"
+                    "[red]GRPO requires TRL >= 0.14.[/red]" " Install: pip install 'trl>=0.14,<1.0'"
                 )
                 sys.exit(1)
             result = train_grpo(config)
@@ -1423,6 +1419,102 @@ def _show_training_results(results: dict) -> None:
             table.add_row(key, str(value))
 
     console.print(table)
+
+
+@main.command()
+@click.option("--from-traces", is_flag=True, help="Build dataset from stored traces.")
+@click.option("--days", type=int, default=7, help="Collect traces from last N days.")
+@click.option("--min-rating", type=float, default=0, help="Minimum trace rating.")
+@click.option(
+    "--task",
+    type=click.Choice(["sft", "dpo"]),
+    default="dpo",
+    help="Training task.",
+)
+@click.option("--model", type=click.Path(), required=True, help="Base model path.")
+@click.option("--output", type=click.Path(), default="./outputs/retrain", help="Output directory.")
+def retrain(
+    from_traces: bool,
+    days: int,
+    min_rating: float,
+    task: str,
+    model: str,
+    output: str,
+) -> None:
+    """Retrain model from collected traces (closed-loop).
+
+    \b
+    Examples:
+        pulsar retrain --from-traces --model ./models/base --task dpo
+        pulsar retrain --from-traces --days 14 --min-rating 0.7 --model ./models/base
+    """
+    from pulsar_ai.pipeline.closed_loop_steps import (
+        step_collect_traces,
+        step_build_dataset,
+    )
+
+    if not from_traces:
+        console.print("[yellow]Use --from-traces to build dataset from stored traces.[/yellow]")
+        sys.exit(1)
+
+    # 1. Collect traces
+    console.print(Panel(f"Collecting traces (last {days} days, min_rating={min_rating})..."))
+    collect_result = step_collect_traces({"days": days, "min_rating": min_rating, "limit": 500})
+    trace_count = collect_result["count"]
+    console.print(f"  Found [bold]{trace_count}[/bold] traces")
+
+    if trace_count == 0:
+        console.print("[yellow]No traces found. Nothing to retrain on.[/yellow]")
+        return
+
+    # 2. Build dataset
+    console.print(Panel(f"Building {task} dataset from {trace_count} traces..."))
+    dataset_result = step_build_dataset(
+        {
+            "trace_ids": collect_result["trace_ids"],
+            "format": task,
+            "output_dir": f"{output}/data",
+            "name": f"retrain-{task}",
+            "quality_filter": {"dedup": True, "min_length": 10},
+        }
+    )
+    console.print(
+        f"  Dataset: [bold]{dataset_result['path']}[/bold] "
+        f"({dataset_result['num_examples']} examples)"
+    )
+
+    if dataset_result["num_examples"] == 0:
+        console.print("[yellow]Empty dataset generated. Nothing to train on.[/yellow]")
+        return
+
+    # 3. Train
+    console.print(Panel(f"Training {task} on [bold]{model}[/bold]..."))
+    train_config = {
+        "task": task,
+        "model": {"name": model},
+        "dataset": {"path": dataset_result["path"]},
+        "output": {"dir": output},
+    }
+
+    from pulsar_ai.pipeline.steps import dispatch_step
+
+    try:
+        train_result = dispatch_step("training", train_config)
+    except Exception as e:
+        console.print(f"[red]Training failed:[/red] {e}")
+        sys.exit(1)
+
+    # 4. Show results
+    table = Table(title="Retrain Results")
+    table.add_column("Step", style="cyan")
+    table.add_column("Result", style="green")
+    table.add_row("Traces collected", str(trace_count))
+    table.add_row("Dataset examples", str(dataset_result["num_examples"]))
+    table.add_row("Dataset path", dataset_result["path"])
+    table.add_row("Task", task)
+    table.add_row("Output", train_result.get("adapter_dir", output))
+    console.print(table)
+    console.print("[green]Retrain pipeline complete![/green]")
 
 
 def _show_eval_results(results: dict) -> None:
