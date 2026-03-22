@@ -15,6 +15,7 @@ import { FlowCanvas } from "@/components/flow/FlowCanvas"
 import { PropertiesPanel } from "@/components/flow/PropertiesPanel"
 import { AgentOffice } from "@/components/flow/office/AgentOffice"
 import { ViewToggle } from "@/components/flow/ViewToggle"
+import { PersonaEditor } from "@/components/flow/PersonaEditor"
 import { useWorkflow, type WorkflowMeta } from "@/hooks/useWorkflow"
 
 type ViewMode = "dag" | "office" | "split"
@@ -160,6 +161,7 @@ export function WorkflowBuilder() {
   const workflow = useWorkflow()
   const [showLoad, setShowLoad] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>("dag")
+  const [personaEditorNodeId, setPersonaEditorNodeId] = useState<string | null>(null)
 
   useEffect(() => {
     workflow.loadList().then((list) => {
@@ -179,6 +181,14 @@ export function WorkflowBuilder() {
     const node = workflow.nodes.find((n) => n.id === id) ?? null
     workflow.setSelectedNode(node)
   }
+
+  const handleNodeDoubleClick = (nodeId: string) => {
+    setPersonaEditorNodeId(nodeId)
+  }
+
+  const personaEditorNode = personaEditorNodeId
+    ? workflow.nodes.find((n) => n.id === personaEditorNodeId)
+    : null
 
   const showDag = viewMode === "dag" || viewMode === "split"
   const showOffice = viewMode === "office" || viewMode === "split"
@@ -200,7 +210,11 @@ export function WorkflowBuilder() {
         <NodePalette />
         {showDag && (
           <ReactFlowProvider>
-            <FlowCanvas workflow={workflow} />
+            <FlowCanvas
+              workflow={workflow}
+              onNodeDoubleClick={handleNodeDoubleClick}
+              customPersonas={workflow.customPersonas}
+            />
           </ReactFlowProvider>
         )}
         {showOffice && (
@@ -208,6 +222,10 @@ export function WorkflowBuilder() {
             nodes={workflow.nodes}
             selectedNodeId={workflow.selectedNode?.id ?? null}
             onSelectNode={handleOfficeSelectNode}
+            onDoubleClickNode={handleNodeDoubleClick}
+            customPersonas={workflow.customPersonas}
+            environment={workflow.officeEnvironment}
+            onEnvironmentChange={workflow.setOfficeEnvironment}
           />
         )}
         {workflow.selectedNode && (
@@ -226,6 +244,23 @@ export function WorkflowBuilder() {
           onDelete={(id) => workflow.deleteWorkflow(id)}
           onClose={() => setShowLoad(false)}
           onNew={workflow.clearCanvas}
+        />
+      )}
+
+      {personaEditorNode && (
+        <PersonaEditor
+          nodeId={personaEditorNode.id}
+          currentType={personaEditorNode.type || ""}
+          customPersona={workflow.customPersonas[personaEditorNode.id]}
+          onSave={(nodeId, persona) => {
+            if (Object.keys(persona).length === 0) {
+              workflow.clearCustomPersona(nodeId)
+            } else {
+              workflow.setCustomPersona(nodeId, persona)
+            }
+            setPersonaEditorNodeId(null)
+          }}
+          onClose={() => setPersonaEditorNodeId(null)}
         />
       )}
     </div>

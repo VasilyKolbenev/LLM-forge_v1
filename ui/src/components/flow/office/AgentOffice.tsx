@@ -3,6 +3,9 @@ import type { Node } from "@xyflow/react"
 import { OfficeGrid } from "./OfficeGrid"
 import { Desk } from "./Desk"
 import { PERSONAS } from "../personas"
+import type { CustomPersona } from "../PersonaEditor"
+import type { OfficeEnvironment } from "../EnvironmentPicker"
+import { EnvironmentPicker } from "../EnvironmentPicker"
 
 const DEFAULT_PERSONA = {
   name: "Node",
@@ -26,6 +29,10 @@ interface AgentOfficeProps {
   nodes: Node[]
   selectedNodeId: string | null
   onSelectNode: (id: string) => void
+  onDoubleClickNode?: (id: string) => void
+  customPersonas?: Record<string, CustomPersona>
+  environment?: OfficeEnvironment
+  onEnvironmentChange?: (env: OfficeEnvironment) => void
 }
 
 function getStatusMessage(
@@ -41,11 +48,27 @@ function getStatusMessage(
   return undefined
 }
 
-export function AgentOffice({ nodes, selectedNodeId, onSelectNode }: AgentOfficeProps) {
+export function AgentOffice({
+  nodes,
+  selectedNodeId,
+  onSelectNode,
+  onDoubleClickNode,
+  customPersonas = {},
+  environment = "modern-office",
+  onEnvironmentChange,
+}: AgentOfficeProps) {
   const desks = useMemo(() => {
     return nodes.map((node, index) => {
       const personaKey = String(node.type || "")
-      const persona = PERSONAS[personaKey] ?? DEFAULT_PERSONA
+      const basePersona = PERSONAS[personaKey] ?? DEFAULT_PERSONA
+      const custom = customPersonas[node.id]
+
+      const mergedName = custom?.name ?? basePersona.name
+      const mergedRole = custom?.role ?? basePersona.role
+      const mergedColor = custom?.avatarColor ?? basePersona.color
+      const mergedCategory = basePersona.category
+      const avatarEmoji = custom?.avatarEmoji
+
       const data = (node.data ?? {}) as Record<string, unknown>
       const status = String(data.status || "idle") as "idle" | "running" | "done" | "error"
 
@@ -54,25 +77,32 @@ export function AgentOffice({ nodes, selectedNodeId, onSelectNode }: AgentOffice
       const iso = toIsometric(gridX, gridY)
 
       const fullPersona = PERSONAS[personaKey]
-      const message = fullPersona
-        ? getStatusMessage(fullPersona, status)
+      const messagePersona = fullPersona
+        ? {
+            idleMessage: custom?.idleMessage ?? fullPersona.idleMessage,
+            workingMessages: custom?.workingMessages ?? fullPersona.workingMessages,
+            doneMessage: custom?.doneMessage ?? fullPersona.doneMessage,
+            errorMessage: custom?.errorMessage ?? fullPersona.errorMessage,
+          }
         : undefined
+      const message = messagePersona ? getStatusMessage(messagePersona, status) : undefined
 
       return {
         id: node.id,
         x: iso.x,
         y: iso.y,
-        agentName: persona.name,
-        agentRole: persona.role,
-        color: persona.color,
+        agentName: mergedName,
+        agentRole: mergedRole,
+        color: mergedColor,
         status,
-        category: persona.category,
+        category: mergedCategory,
         selected: node.id === selectedNodeId,
         message: status !== "idle" ? message : undefined,
         index,
+        avatarEmoji,
       }
     })
-  }, [nodes, selectedNodeId])
+  }, [nodes, selectedNodeId, customPersonas])
 
   const viewBox = useMemo(() => {
     if (desks.length === 0) {
@@ -89,6 +119,13 @@ export function AgentOffice({ nodes, selectedNodeId, onSelectNode }: AgentOffice
 
   return (
     <div className="flex-1 h-full bg-[#0a0a0b] overflow-hidden relative">
+      {/* Environment picker */}
+      {onEnvironmentChange && (
+        <div className="absolute top-3 right-3 z-10">
+          <EnvironmentPicker environment={environment} onChange={onEnvironmentChange} />
+        </div>
+      )}
+
       <svg
         width="100%"
         height="100%"
@@ -96,7 +133,7 @@ export function AgentOffice({ nodes, selectedNodeId, onSelectNode }: AgentOffice
         preserveAspectRatio="xMidYMid meet"
         className="w-full h-full"
       >
-        <OfficeGrid />
+        <OfficeGrid environment={environment} />
         {desks.map((desk) => (
           <Desk
             key={desk.id}
@@ -109,8 +146,11 @@ export function AgentOffice({ nodes, selectedNodeId, onSelectNode }: AgentOffice
             category={desk.category}
             selected={desk.selected}
             onClick={() => onSelectNode(desk.id)}
+            onDoubleClick={onDoubleClickNode ? () => onDoubleClickNode(desk.id) : undefined}
             message={desk.message}
             index={desk.index}
+            avatarEmoji={desk.avatarEmoji}
+            environment={environment}
           />
         ))}
       </svg>

@@ -1,10 +1,11 @@
-import { useCallback, useRef, type DragEvent } from "react"
+import { useCallback, useMemo, useRef, type DragEvent } from "react"
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
   BackgroundVariant,
+  type Node,
   type ReactFlowInstance,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
@@ -13,6 +14,7 @@ import { AgentPersonaNode } from "./nodes/AgentPersonaNode"
 import { AnimatedEdge } from "./AnimatedEdge"
 import { PERSONAS } from "./personas"
 import type { useWorkflow } from "@/hooks/useWorkflow"
+import type { CustomPersona } from "./PersonaEditor"
 
 const nodeTypes = {
   dataSource: AgentPersonaNode,
@@ -51,9 +53,11 @@ type WorkflowHook = ReturnType<typeof useWorkflow>
 
 interface FlowCanvasProps {
   workflow: WorkflowHook
+  onNodeDoubleClick?: (nodeId: string) => void
+  customPersonas?: Record<string, CustomPersona>
 }
 
-export function FlowCanvas({ workflow }: FlowCanvasProps) {
+export function FlowCanvas({ workflow, onNodeDoubleClick, customPersonas = {} }: FlowCanvasProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const rfInstance = useRef<ReactFlowInstance | null>(null)
 
@@ -80,15 +84,32 @@ export function FlowCanvas({ workflow }: FlowCanvasProps) {
     [workflow]
   )
 
+  const handleNodeDoubleClick = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      onNodeDoubleClick?.(node.id)
+    },
+    [onNodeDoubleClick]
+  )
+
+  const nodesWithPersonas = useMemo(() => {
+    if (Object.keys(customPersonas).length === 0) return workflow.nodes
+    return workflow.nodes.map((n) => {
+      const cp = customPersonas[n.id]
+      if (!cp) return n
+      return { ...n, data: { ...n.data, customPersona: cp } }
+    })
+  }, [workflow.nodes, customPersonas])
+
   return (
     <div ref={reactFlowWrapper} className="flex-1 h-full">
       <ReactFlow
-        nodes={workflow.nodes}
+        nodes={nodesWithPersonas}
         edges={workflow.edges}
         onNodesChange={workflow.onNodesChange}
         onEdgesChange={workflow.onEdgesChange}
         onConnect={workflow.onConnect}
         onNodeClick={workflow.onNodeClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onPaneClick={() => workflow.setSelectedNode(null)}
         onInit={(instance) => { rfInstance.current = instance }}
         onDragOver={onDragOver}

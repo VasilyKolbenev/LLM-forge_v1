@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react"
 import { motion } from "framer-motion"
 import { PERSONAS } from "../personas"
 import { SpeechBubble } from "../SpeechBubble"
+import type { CustomPersona } from "../PersonaEditor"
 
 function buildConfigSummary(config: Record<string, unknown>): string {
   const parts: string[] = []
@@ -40,7 +41,24 @@ const DEFAULT_PERSONA = {
 
 function AgentPersonaNodeInner({ data, type: nodeType }: NodeProps) {
   const personaKey = String(data.type || nodeType || "")
-  const persona = PERSONAS[personaKey] ?? DEFAULT_PERSONA
+  const basePersona = PERSONAS[personaKey] ?? DEFAULT_PERSONA
+  const custom = (data.customPersona as CustomPersona | undefined) ?? undefined
+
+  const persona = useMemo(() => {
+    if (!custom) return basePersona
+    return {
+      ...basePersona,
+      name: custom.name ?? basePersona.name,
+      role: custom.role ?? basePersona.role,
+      color: custom.avatarColor ?? basePersona.color,
+      idleMessage: custom.idleMessage ?? basePersona.idleMessage,
+      workingMessages: custom.workingMessages ?? basePersona.workingMessages,
+      doneMessage: custom.doneMessage ?? basePersona.doneMessage,
+      errorMessage: custom.errorMessage ?? basePersona.errorMessage,
+    }
+  }, [basePersona, custom])
+
+  const avatarEmoji = custom?.avatarEmoji
   const status = String(data.status || "idle") as "idle" | "running" | "done" | "error"
   const config = (data.config ?? {}) as Record<string, unknown>
   const progress = typeof data.progress === "number" ? (data.progress as number) : undefined
@@ -108,7 +126,7 @@ function AgentPersonaNodeInner({ data, type: nodeType }: NodeProps) {
                   : undefined
             }
           >
-            {persona.name.charAt(0)}
+            {avatarEmoji || persona.name.charAt(0)}
           </motion.div>
 
           <div className="flex-1 min-w-0">

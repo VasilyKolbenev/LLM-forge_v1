@@ -1,5 +1,6 @@
 import { memo } from "react"
 import { motion } from "framer-motion"
+import type { OfficeEnvironment } from "../EnvironmentPicker"
 
 interface DeskProps {
   x: number
@@ -11,8 +12,11 @@ interface DeskProps {
   category: string
   selected: boolean
   onClick: () => void
+  onDoubleClick?: () => void
   message?: string
   index: number
+  avatarEmoji?: string
+  environment?: OfficeEnvironment
 }
 
 const STATUS_LAMP: Record<string, string> = {
@@ -20,6 +24,58 @@ const STATUS_LAMP: Record<string, string> = {
   running: "#3b82f6",
   done: "#22c55e",
   error: "#ef4444",
+}
+
+interface DeskStyle {
+  surface: string
+  front: string
+  right: string
+  stroke: string
+  monitor: string
+  monitorBezel: string
+}
+
+const ENV_DESK_STYLES: Record<OfficeEnvironment, DeskStyle> = {
+  "modern-office": {
+    surface: "#1c1c1e",
+    front: "#161618",
+    right: "#141416",
+    stroke: "#27272a",
+    monitor: "#0a0a0b",
+    monitorBezel: "#18181b",
+  },
+  lab: {
+    surface: "#141e28",
+    front: "#0e1820",
+    right: "#0c151c",
+    stroke: "#1e3040",
+    monitor: "#081018",
+    monitorBezel: "#0e1a28",
+  },
+  "server-room": {
+    surface: "#1e1416",
+    front: "#180e10",
+    right: "#150c0e",
+    stroke: "#302020",
+    monitor: "#100808",
+    monitorBezel: "#1a1012",
+  },
+  "command-center": {
+    surface: "#16162a",
+    front: "#101024",
+    right: "#0e0e20",
+    stroke: "#202040",
+    monitor: "#08081a",
+    monitorBezel: "#121228",
+  },
+  "open-space": {
+    surface: "#1e1f18",
+    front: "#181914",
+    right: "#151610",
+    stroke: "#2a2c22",
+    monitor: "#0c0d08",
+    monitorBezel: "#1a1c14",
+  },
 }
 
 function DeskInner({
@@ -31,15 +87,22 @@ function DeskInner({
   status,
   selected,
   onClick,
+  onDoubleClick,
   message,
   index,
+  avatarEmoji,
+  environment = "modern-office",
 }: DeskProps) {
   const lampColor = STATUS_LAMP[status] ?? STATUS_LAMP.idle
+  const style = ENV_DESK_STYLES[environment] ?? ENV_DESK_STYLES["modern-office"]
+
+  const avatarDisplay = avatarEmoji || agentName.charAt(0)
 
   return (
     <motion.g
       transform={`translate(${x}, ${y})`}
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       style={{ cursor: "pointer" }}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -65,37 +128,37 @@ function DeskInner({
       {/* Desk surface — isometric parallelogram */}
       <polygon
         points="0,-20 80,20 0,60 -80,20"
-        fill="#1c1c1e"
-        stroke={selected ? color : "#27272a"}
+        fill={style.surface}
+        stroke={selected ? color : style.stroke}
         strokeWidth={selected ? 1.5 : 1}
       />
       {/* Desk front face */}
       <polygon
         points="-80,20 0,60 0,72 -80,32"
-        fill="#161618"
-        stroke="#27272a"
+        fill={style.front}
+        stroke={style.stroke}
         strokeWidth={0.5}
       />
       {/* Desk right face */}
       <polygon
         points="0,60 80,20 80,32 0,72"
-        fill="#141416"
-        stroke="#27272a"
+        fill={style.right}
+        stroke={style.stroke}
         strokeWidth={0.5}
       />
 
       {/* Monitor — small isometric rectangle on desk */}
       <polygon
         points="0,-18 30,-3 0,12 -30,-3"
-        fill="#0a0a0b"
-        stroke="#27272a"
+        fill={style.monitor}
+        stroke={style.stroke}
         strokeWidth={0.5}
       />
       {/* Monitor screen bezel */}
       <polygon
         points="-10,-40 20,-25 20,-5 -10,-20"
-        fill="#18181b"
-        stroke="#27272a"
+        fill={style.monitorBezel}
+        stroke={style.stroke}
         strokeWidth={0.5}
       />
       {/* Monitor screen */}
@@ -157,17 +220,17 @@ function DeskInner({
               : undefined
         }
       />
-      {/* Agent initial letter */}
+      {/* Agent initial letter or emoji */}
       <text
         x={0}
         y={-55}
         textAnchor="middle"
         fill={color}
-        fontSize={14}
+        fontSize={avatarEmoji ? 16 : 14}
         fontWeight="bold"
         style={{ pointerEvents: "none", userSelect: "none" }}
       >
-        {agentName.charAt(0)}
+        {avatarDisplay}
       </text>
 
       {/* Speech bubble */}
@@ -184,14 +247,14 @@ function DeskInner({
             width={120}
             height={26}
             rx={6}
-            fill="#1c1c1e"
-            stroke="#27272a"
+            fill={style.surface}
+            stroke={style.stroke}
             strokeWidth={0.5}
           />
           {/* Bubble tail */}
           <polygon
             points="-4,-79 4,-79 0,-73"
-            fill="#1c1c1e"
+            fill={style.surface}
           />
           <text
             x={0}
