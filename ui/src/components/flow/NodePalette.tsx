@@ -36,6 +36,8 @@ const PALETTE_ITEMS: PaletteItem[] = [
   { type: "collectTraces", label: "Collect Traces", group: "Closed Loop" },
   { type: "buildDataset", label: "Build Dataset", group: "Closed Loop" },
   { type: "regressionEval", label: "Regression Eval", group: "Closed Loop" },
+  { type: "openclawSession", label: "OpenClaw Session", group: "OpenClaw" },
+  { type: "nemoclawDeploy", label: "NemoClaw Deploy", group: "OpenClaw" },
   { type: "group", label: "Group", group: "Structure" },
 ]
 

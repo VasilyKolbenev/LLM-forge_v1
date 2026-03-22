@@ -1,0 +1,13 @@
+openclaw:
+  base_url: http://localhost:8100
+  api_key: ""
+
+nemoclaw:
+  base_url: http://localhost:8200
+  default_policy:
+    allow_network: false
+    allowed_domains: []
+    allow_file_write: false
+    max_memory_mb: 512
+    max_cpu_seconds: 60
+    max_tokens: 4096
