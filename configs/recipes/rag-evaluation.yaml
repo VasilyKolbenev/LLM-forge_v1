@@ -1,0 +1,25 @@
+meta:
+  name: "RAG Evaluation Pipeline"
+  task_type: eval
+  difficulty: intermediate
+  hardware: "1x 16GB"
+  tags: [eval, rag, retrieval, metrics]
+  description: "Evaluate retrieval-augmented generation quality"
+
+task: eval
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  dtype: bfloat16
+dataset:
+  path: data/rag_eval.jsonl
+  format: jsonl
+  question_column: question
+  context_column: context
+  answer_column: answer
+evaluation:
+  metrics: [faithfulness, relevance, correctness]
+  judge_model: gpt-4o-mini
+  batch_size: 8
+  max_samples: 500
+output:
+  dir: ./outputs/rag-evaluation

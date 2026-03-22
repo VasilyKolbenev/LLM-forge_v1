@@ -1,0 +1,13 @@
+# AWQ Export — Activation-aware Weight Quantization
+# Produces HuggingFace-compatible quantized model
+
+model_path: ./outputs/cam-sft/merged
+
+export:
+  format: awq
+  output_path: ./outputs/cam-sft/model-awq
+  awq:
+    quant_config: w4-g128       # preset: w4-g128 or w4-g64
+    calibration_data: auto      # "auto" reuses training dataset
+    calibration_samples: 128
+    text_column: text

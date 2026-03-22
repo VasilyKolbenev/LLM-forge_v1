@@ -1,0 +1,15 @@
+# Embedding model training task defaults
+
+task: embedding
+
+embedding:
+  schema: triplet
+  loss: MultipleNegativesRankingLoss
+
+training:
+  epochs: 3
+  learning_rate: 2e-5
+  batch_size: 16
+  warmup_steps: 100
+  logging_steps: 50
+  save_steps: 500

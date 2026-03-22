@@ -1,0 +1,33 @@
+meta:
+  name: "DPO Alignment Starter"
+  task_type: dpo
+  difficulty: intermediate
+  hardware: "1x 24GB"
+  tags: [dpo, alignment, rlhf]
+  description: "Direct preference optimization for model alignment"
+
+task: dpo
+model:
+  name: meta-llama/Meta-Llama-3-8B-Instruct
+  dtype: bfloat16
+sft_adapter_path: ./outputs/llama-instruct-sft/lora
+dataset:
+  path: data/dpo_pairs.jsonl
+  format: jsonl
+  test_size: 0.1
+dpo:
+  beta: 0.1
+  loss_type: sigmoid
+training:
+  epochs: 2
+  learning_rate: 5.0e-5
+  batch_size: 2
+  gradient_accumulation: 8
+  max_seq_length: 2048
+  warmup_ratio: 0.1
+lora:
+  r: 16
+  alpha: 32
+  target_modules: [q_proj, v_proj, k_proj, o_proj]
+output:
+  dir: ./outputs/dpo-starter

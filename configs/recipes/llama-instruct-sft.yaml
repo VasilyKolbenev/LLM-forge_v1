@@ -1,0 +1,30 @@
+meta:
+  name: "Llama 3 Instruct SFT"
+  task_type: sft
+  difficulty: beginner
+  hardware: "1x 24GB"
+  tags: [llama, instruct, chat]
+  description: "Supervised fine-tune Llama 3 8B on instruction data"
+
+task: sft
+model:
+  name: meta-llama/Meta-Llama-3-8B-Instruct
+  dtype: bfloat16
+dataset:
+  path: data/instructions.csv
+  format: csv
+  text_column: text
+  test_size: 0.1
+training:
+  epochs: 3
+  learning_rate: 2.0e-4
+  batch_size: 4
+  gradient_accumulation: 4
+  max_seq_length: 2048
+  warmup_ratio: 0.03
+lora:
+  r: 16
+  alpha: 32
+  target_modules: [q_proj, v_proj, k_proj, o_proj]
+output:
+  dir: ./outputs/llama-instruct-sft

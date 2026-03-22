@@ -1,0 +1,30 @@
+meta:
+  name: "Code Model SFT"
+  task_type: sft
+  difficulty: intermediate
+  hardware: "1x 24GB"
+  tags: [code, instruct, programming]
+  description: "Fine-tune a code model on programming tasks"
+
+task: sft
+model:
+  name: Qwen/Qwen2.5-Coder-7B
+  dtype: bfloat16
+dataset:
+  path: data/code_instructions.jsonl
+  format: jsonl
+  text_column: text
+  test_size: 0.1
+training:
+  epochs: 2
+  learning_rate: 1.0e-4
+  batch_size: 2
+  gradient_accumulation: 8
+  max_seq_length: 4096
+  warmup_ratio: 0.05
+lora:
+  r: 32
+  alpha: 64
+  target_modules: [q_proj, v_proj, k_proj, o_proj, gate_proj, up_proj]
+output:
+  dir: ./outputs/coder-sft

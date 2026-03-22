@@ -217,6 +217,89 @@ async def pipeline_run_sync(body: dict) -> dict:
         return {"status": "failed", "error": str(e)}
 
 
+@router.get("/api/v1/pipeline/trace/{workflow_id}")
+async def get_pipeline_trace(workflow_id: str) -> dict[str, Any]:
+    """Get execution trace for replay.
+
+    For MVP this returns mock trace data generated from recent runs.
+    Later this will read from actual execution logs.
+
+    Args:
+        workflow_id: The workflow identifier.
+
+    Returns:
+        Dictionary with trace events for replay visualization.
+    """
+    # Find the most recent run for this workflow (by name match or any run)
+    matching_run = None
+    for run in reversed(_recent_runs):
+        if run.get("name", "") == workflow_id or matching_run is None:
+            matching_run = run
+            if run.get("name", "") == workflow_id:
+                break
+
+    if not matching_run:
+        return {"workflow_id": workflow_id, "events": []}
+
+    # Generate mock trace events from the stored run data
+    events: list[dict[str, Any]] = []
+    steps = matching_run.get("steps", [])
+    cumulative_ms = 0
+
+    working_messages = [
+        ["Analyzing input data...", "Processing records...", "Validating schema..."],
+        ["Running inference...", "Computing embeddings...", "Generating response..."],
+        ["Checking compliance rules...", "Applying policies...", "Verifying constraints..."],
+        ["Routing request...", "Evaluating conditions...", "Selecting pathway..."],
+        ["Aggregating results...", "Building report...", "Finalizing output..."],
+    ]
+
+    for i, step_name in enumerate(steps):
+        duration_ms = 2000 + (hash(step_name) % 4000)
+        msgs = working_messages[i % len(working_messages)]
+
+        events.append({
+            "timestamp": cumulative_ms,
+            "nodeId": step_name,
+            "type": "start",
+            "message": f"{step_name}: Starting...",
+        })
+
+        for p in range(1, 3):
+            progress_time = cumulative_ms + (duration_ms * p) // 3
+            events.append({
+                "timestamp": progress_time,
+                "nodeId": step_name,
+                "type": "progress",
+                "progress": p / 3,
+                "message": msgs[(p - 1) % len(msgs)],
+            })
+
+        final_type = "error" if (
+            matching_run.get("status") == "failed"
+            and i == len(steps) - 1
+        ) else "complete"
+
+        events.append({
+            "timestamp": cumulative_ms + duration_ms,
+            "nodeId": step_name,
+            "type": final_type,
+            "message": f"{step_name}: {'Error!' if final_type == 'error' else 'Done!'}",
+            "duration": duration_ms / 1000,
+        })
+
+        cumulative_ms += duration_ms + 300
+
+    events.sort(key=lambda e: e["timestamp"])
+
+    return {
+        "workflow_id": workflow_id,
+        "events": events,
+        "total_time_ms": cumulative_ms,
+        "source": "mock",
+    }
+
+
 @router.get("/api/v1/pipeline/runs")
 def list_pipeline_runs() -> list[dict]:
     """List recent pipeline runs."""

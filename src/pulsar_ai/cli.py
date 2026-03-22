@@ -67,7 +67,7 @@ def main(verbose: bool) -> None:
 @click.argument("overrides", nargs=-1)
 @click.option(
     "--task",
-    type=click.Choice(["sft", "dpo", "auto"]),
+    type=click.Choice(["sft", "dpo", "grpo", "embedding", "reranker", "classification", "auto"]),
     default="auto",
     help="Training task (default: auto-detect from config).",
 )
@@ -167,6 +167,46 @@ def train(
             from pulsar_ai.training.dpo import train_dpo
 
             results = train_dpo(config, progress=progress)
+        elif task == "grpo":
+            try:
+                from pulsar_ai.training.grpo import train_grpo
+            except ImportError:
+                console.print(
+                    "[red]GRPO requires TRL >= 0.14.[/red]"
+                    " Install: pip install 'trl>=0.14,<1.0'"
+                )
+                sys.exit(1)
+            results = train_grpo(config, progress=progress)
+        elif task == "embedding":
+            try:
+                from pulsar_ai.training.embedding import train_embedding
+            except ImportError:
+                console.print(
+                    "[red]Embedding requires sentence-transformers >= 3.0.[/red]"
+                    " Install: pip install 'pulsar-ai[embedding]'"
+                )
+                sys.exit(1)
+            results = train_embedding(config, progress=progress)
+        elif task == "reranker":
+            try:
+                from pulsar_ai.training.reranker import train_reranker
+            except ImportError:
+                console.print(
+                    "[red]Reranker requires sentence-transformers >= 3.0.[/red]"
+                    " Install: pip install 'pulsar-ai[embedding]'"
+                )
+                sys.exit(1)
+            results = train_reranker(config, progress=progress)
+        elif task == "classification":
+            try:
+                from pulsar_ai.training.classification import train_classification
+            except ImportError:
+                console.print(
+                    "[red]Classification requires scikit-learn.[/red]"
+                    " Install: pip install 'pulsar-ai[classification]'"
+                )
+                sys.exit(1)
+            results = train_classification(config, progress=progress)
         else:
             console.print(f"[red]Unknown task: {task}[/red]")
             sys.exit(1)
@@ -273,7 +313,7 @@ def evaluate(
 @click.option(
     "--format",
     "export_format",
-    type=click.Choice(["gguf", "merged", "hub"]),
+    type=click.Choice(["gguf", "merged", "hub", "awq", "gptq"]),
     default="gguf",
     help="Export format.",
 )
@@ -340,6 +380,22 @@ def export(
         from pulsar_ai.export.hub import push_to_hub
 
         result = push_to_hub(config)
+    elif export_format == "awq":
+        try:
+            from pulsar_ai.export.awq import export_awq
+        except ImportError:
+            console.print("[red]AWQ requires autoawq.[/red] Install: pip install 'pulsar-ai[awq]'")
+            sys.exit(1)
+        result = export_awq(config)
+    elif export_format == "gptq":
+        try:
+            from pulsar_ai.export.gptq import export_gptq
+        except ImportError:
+            console.print(
+                "[red]GPTQ requires auto-gptq.[/red] Install: pip install 'pulsar-ai[gptq]'"
+            )
+            sys.exit(1)
+        result = export_gptq(config)
     else:
         console.print(f"[red]Unknown format: {export_format}[/red]")
         sys.exit(1)
@@ -357,7 +413,7 @@ def export(
 @click.option("--port", type=int, default=8080, help="Server port.")
 @click.option(
     "--backend",
-    type=click.Choice(["llamacpp", "vllm"]),
+    type=click.Choice(["llamacpp", "vllm", "sglang"]),
     default="llamacpp",
     help="Serving backend.",
 )
@@ -380,13 +436,22 @@ def serve(model: str, port: int, backend: str, host: str) -> None:
         from pulsar_ai.serving.vllm import start_server
 
         start_server(model_path=model, host=host, port=port)
+    elif backend == "sglang":
+        try:
+            from pulsar_ai.serving.sglang import start_server as start_sglang
+        except ImportError:
+            console.print(
+                "[red]SGLang not installed.[/red] Install: pip install 'pulsar-ai[sglang]'"
+            )
+            sys.exit(1)
+        start_sglang(model_path=model, host=host, port=port)
 
 
 @main.command()
 @click.argument("name")
 @click.option(
     "--task",
-    type=click.Choice(["sft", "dpo"]),
+    type=click.Choice(["sft", "dpo", "grpo", "embedding", "reranker", "classification"]),
     default="sft",
     help="Training task.",
 )
@@ -1173,6 +1238,172 @@ def _show_config_summary(config: dict, task: str) -> None:
         )
 
     console.print(table)
+
+
+# ---------------------------------------------------------------
+# Recipe Hub
+# ---------------------------------------------------------------
+
+
+@main.group()
+def recipes() -> None:
+    """Browse and run recipe templates."""
+
+
+@recipes.command(name="list")
+@click.option("--task", "task_type", default=None, help="Filter by task.")
+@click.option("--tag", default=None, help="Filter by tag.")
+@click.option(
+    "--difficulty",
+    default=None,
+    type=click.Choice(["beginner", "intermediate", "advanced"]),
+    help="Filter by difficulty.",
+)
+def recipes_list(
+    task_type: Optional[str],
+    tag: Optional[str],
+    difficulty: Optional[str],
+) -> None:
+    """List available recipes.
+
+    \b
+    Examples:
+        pulsar recipes list
+        pulsar recipes list --task sft --difficulty beginner
+    """
+    from pulsar_ai.recipes import RecipeRegistry
+
+    registry = RecipeRegistry()
+    items = registry.list_recipes(
+        task_type=task_type, tag=tag, difficulty=difficulty
+    )
+
+    if not items:
+        console.print("[dim]No recipes found.[/dim]")
+        return
+
+    table = Table(title="Recipes")
+    table.add_column("Name", style="cyan")
+    table.add_column("Task", style="green")
+    table.add_column("Difficulty")
+    table.add_column("Hardware", style="dim")
+    table.add_column("Description")
+
+    for r in items:
+        diff = r.get("difficulty", "?")
+        diff_style = {
+            "beginner": "green",
+            "intermediate": "yellow",
+            "advanced": "red",
+        }.get(diff, "white")
+        table.add_row(
+            r.get("file", "?"),
+            r.get("task_type", "?"),
+            f"[{diff_style}]{diff}[/{diff_style}]",
+            r.get("hardware", "?"),
+            (r.get("description", "") or "")[:60],
+        )
+
+    console.print(table)
+
+
+@recipes.command(name="run")
+@click.argument("name")
+@click.argument("overrides", nargs=-1)
+def recipes_run(name: str, overrides: tuple[str, ...]) -> None:
+    """Run a recipe by name with optional key=value overrides.
+
+    \b
+    Examples:
+        pulsar recipes run llama-instruct-sft
+        pulsar recipes run dpo-starter training.epochs=5
+    """
+    from pulsar_ai.recipes import RecipeRegistry
+    from pulsar_ai.config import load_config, _set_nested
+
+    registry = RecipeRegistry()
+    try:
+        config = registry.load_recipe(name)
+    except FileNotFoundError:
+        console.print(f"[red]Recipe not found: {name}[/red]")
+        sys.exit(1)
+
+    parsed = _parse_overrides(overrides)
+    for key, value in parsed.items():
+        _set_nested(config, key, value)
+
+    task = config.get("task", "sft")
+    console.print(
+        Panel(
+            f"Recipe: [bold]{name}[/bold]\n"
+            f"Task: {task}\n"
+            f"Model: {config.get('model', {}).get('name', '?')}",
+            title="Recipe Run",
+        )
+    )
+
+    try:
+        if task == "sft":
+            from pulsar_ai.training.sft import train_sft
+
+            result = train_sft(config)
+        elif task == "dpo":
+            from pulsar_ai.training.dpo import train_dpo
+
+            result = train_dpo(config)
+        elif task == "grpo":
+            try:
+                from pulsar_ai.training.grpo import train_grpo
+            except ImportError:
+                console.print(
+                    "[red]GRPO requires TRL >= 0.14.[/red]"
+                    " Install: pip install 'trl>=0.14,<1.0'"
+                )
+                sys.exit(1)
+            result = train_grpo(config)
+        elif task == "embedding":
+            try:
+                from pulsar_ai.training.embedding import train_embedding
+            except ImportError:
+                console.print(
+                    "[red]Embedding requires sentence-transformers >= 3.0.[/red]"
+                    " Install: pip install 'pulsar-ai[embedding]'"
+                )
+                sys.exit(1)
+            result = train_embedding(config)
+        elif task == "reranker":
+            try:
+                from pulsar_ai.training.reranker import train_reranker
+            except ImportError:
+                console.print(
+                    "[red]Reranker requires sentence-transformers >= 3.0.[/red]"
+                    " Install: pip install 'pulsar-ai[embedding]'"
+                )
+                sys.exit(1)
+            result = train_reranker(config)
+        elif task == "classification":
+            try:
+                from pulsar_ai.training.classification import train_classification
+            except ImportError:
+                console.print(
+                    "[red]Classification requires scikit-learn.[/red]"
+                    " Install: pip install 'pulsar-ai[classification]'"
+                )
+                sys.exit(1)
+            result = train_classification(config)
+        else:
+            console.print(f"[red]Unknown task: {task}[/red]")
+            sys.exit(1)
+
+        console.print("[green]Recipe completed successfully![/green]")
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if isinstance(v, (str, int, float)):
+                    console.print(f"  {k}: {v}")
+    except Exception as exc:
+        console.print(f"[red]Recipe failed:[/red] {exc}")
+        logger.exception("Recipe run error for %s", name)
+        sys.exit(1)
 
 
 def _show_training_results(results: dict) -> None:

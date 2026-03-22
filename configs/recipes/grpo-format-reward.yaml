@@ -1,0 +1,34 @@
+meta:
+  name: "GRPO Format Reward Training"
+  task_type: grpo
+  difficulty: advanced
+  hardware: "1x 24GB"
+  tags: [grpo, reward, reinforcement]
+  description: "Group relative policy optimization with format rewards"
+
+task: grpo
+model:
+  name: Qwen/Qwen2.5-7B-Instruct
+  dtype: bfloat16
+dataset:
+  path: data/grpo_prompts.jsonl
+  format: jsonl
+  test_size: 0.05
+grpo:
+  num_generations: 4
+  reward_type: format
+  kl_coeff: 0.05
+  temperature: 0.7
+training:
+  epochs: 1
+  learning_rate: 1.0e-5
+  batch_size: 1
+  gradient_accumulation: 16
+  max_seq_length: 2048
+  warmup_ratio: 0.1
+lora:
+  r: 16
+  alpha: 32
+  target_modules: [q_proj, v_proj, k_proj, o_proj]
+output:
+  dir: ./outputs/grpo-format-reward

@@ -10,6 +10,8 @@ import {
   type OnEdgesChange,
 } from "@xyflow/react"
 import { api } from "@/api/client"
+import type { CustomPersona } from "@/components/flow/PersonaEditor"
+import type { OfficeEnvironment } from "@/components/flow/EnvironmentPicker"
 
 export interface WorkflowMeta {
   id: string
@@ -70,6 +72,20 @@ export function useWorkflow() {
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState<string | null>(null)
   const [templateLoading, setTemplateLoading] = useState(false)
+  const [customPersonas, setCustomPersonas] = useState<Record<string, CustomPersona>>({})
+  const [officeEnvironment, setOfficeEnvironment] = useState<OfficeEnvironment>("modern-office")
+
+  const setCustomPersona = useCallback((nodeId: string, persona: CustomPersona) => {
+    setCustomPersonas((prev) => ({ ...prev, [nodeId]: persona }))
+  }, [])
+
+  const clearCustomPersona = useCallback((nodeId: string) => {
+    setCustomPersonas((prev) => {
+      const next = { ...prev }
+      delete next[nodeId]
+      return next
+    })
+  }, [])
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -452,6 +468,11 @@ export function useWorkflow() {
     loadList,
     run,
     deleteWorkflow,
+    customPersonas,
+    setCustomPersona,
+    clearCustomPersona,
+    officeEnvironment,
+    setOfficeEnvironment,
   }
 }
 

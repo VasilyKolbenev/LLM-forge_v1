@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { ReactFlowProvider } from "@xyflow/react"
+import { AnimatePresence } from "framer-motion"
 import {
   Play,
   Save,
@@ -9,18 +10,34 @@ import {
   Loader2,
   X,
   Landmark,
+  History,
 } from "lucide-react"
 import { NodePalette } from "@/components/flow/NodePalette"
 import { FlowCanvas } from "@/components/flow/FlowCanvas"
 import { PropertiesPanel } from "@/components/flow/PropertiesPanel"
+import { AgentOffice } from "@/components/flow/office/AgentOffice"
+import { ViewToggle } from "@/components/flow/ViewToggle"
+import { PersonaEditor } from "@/components/flow/PersonaEditor"
+import { TraceReplay } from "@/components/flow/TraceReplay"
 import { useWorkflow, type WorkflowMeta } from "@/hooks/useWorkflow"
+import { useTraceReplay } from "@/hooks/useTraceReplay"
+
+type ViewMode = "dag" | "office" | "split"
 
 function WorkflowToolbar({
   workflow,
   onOpenLoad,
+  viewMode,
+  onViewModeChange,
+  onReplay,
+  isReplayMode,
 }: {
   workflow: ReturnType<typeof useWorkflow>
   onOpenLoad: () => void
+  viewMode: ViewMode
+  onViewModeChange: (v: ViewMode) => void
+  onReplay: () => void
+  isReplayMode: boolean
 }) {
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-card">
@@ -31,6 +48,7 @@ function WorkflowToolbar({
         className="bg-transparent text-sm font-medium focus:outline-none focus:border-b focus:border-primary w-48"
         placeholder="Workflow name..."
       />
+      <ViewToggle view={viewMode} onChange={onViewModeChange} />
       <div className="flex-1" />
       <button
         onClick={() => workflow.loadBankingTemplate()}
@@ -56,8 +74,16 @@ function WorkflowToolbar({
         Save
       </button>
       <button
+        onClick={onReplay}
+        disabled={workflow.nodes.length === 0 || isReplayMode}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded bg-secondary hover:bg-secondary/80 transition-colors disabled:opacity-50"
+      >
+        <History size={14} />
+        Replay
+      </button>
+      <button
         onClick={() => workflow.run()}
-        disabled={workflow.running || workflow.nodes.length === 0}
+        disabled={workflow.running || workflow.nodes.length === 0 || isReplayMode}
         className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
       >
         {workflow.running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -150,6 +176,9 @@ function LoadModal({
 export function WorkflowBuilder() {
   const workflow = useWorkflow()
   const [showLoad, setShowLoad] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>("dag")
+  const [personaEditorNodeId, setPersonaEditorNodeId] = useState<string | null>(null)
+  const replay = useTraceReplay(workflow.nodes, workflow.edges)
 
   useEffect(() => {
     workflow.loadList().then((list) => {
@@ -165,19 +194,80 @@ export function WorkflowBuilder() {
     setShowLoad(true)
   }
 
+  const handleOfficeSelectNode = (id: string) => {
+    const node = workflow.nodes.find((n) => n.id === id) ?? null
+    workflow.setSelectedNode(node)
+  }
+
+  const handleNodeDoubleClick = (nodeId: string) => {
+    setPersonaEditorNodeId(nodeId)
+  }
+
+  const personaEditorNode = personaEditorNodeId
+    ? workflow.nodes.find((n) => n.id === personaEditorNodeId)
+    : null
+
+  const showDag = viewMode === "dag" || viewMode === "split"
+  const showOffice = viewMode === "office" || viewMode === "split"
+
+  // When replay is active, override node statuses with replay data
+  const replayWorkflow = useMemo(() => {
+    if (!replay.isReplayMode || Object.keys(replay.nodeStatuses).length === 0) {
+      return workflow
+    }
+    // Create a modified workflow with replay statuses injected into node data
+    const modifiedNodes = workflow.nodes.map((n) => {
+      const rs = replay.nodeStatuses[n.id]
+      if (!rs) return n
+      return {
+        ...n,
+        data: {
+          ...n.data,
+          replayStatus: rs,
+        },
+      }
+    })
+    return { ...workflow, nodes: modifiedNodes }
+  }, [workflow, replay.isReplayMode, replay.nodeStatuses])
+
   return (
     <div className="h-[calc(100vh-1rem)] flex flex-col -m-6">
-      <WorkflowToolbar workflow={workflow} onOpenLoad={handleOpenLoad} />
+      <WorkflowToolbar
+        workflow={workflow}
+        onOpenLoad={handleOpenLoad}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onReplay={replay.enterReplay}
+        isReplayMode={replay.isReplayMode}
+      />
       {workflow.runError && (
         <div className="mx-4 mt-3 px-3 py-2 rounded border border-destructive/30 bg-destructive/10 text-destructive text-xs">
           {workflow.runError}
         </div>
       )}
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 relative">
         <NodePalette />
-        <ReactFlowProvider>
-          <FlowCanvas workflow={workflow} />
-        </ReactFlowProvider>
+        {showDag && (
+          <ReactFlowProvider>
+            <FlowCanvas
+              workflow={replayWorkflow}
+              onNodeDoubleClick={handleNodeDoubleClick}
+              customPersonas={workflow.customPersonas}
+            />
+          </ReactFlowProvider>
+        )}
+        {showOffice && (
+          <AgentOffice
+            nodes={workflow.nodes}
+            selectedNodeId={workflow.selectedNode?.id ?? null}
+            onSelectNode={handleOfficeSelectNode}
+            onDoubleClickNode={handleNodeDoubleClick}
+            customPersonas={workflow.customPersonas}
+            environment={workflow.officeEnvironment}
+            onEnvironmentChange={workflow.setOfficeEnvironment}
+            replayNodeStatuses={replay.isReplayMode ? replay.nodeStatuses : undefined}
+          />
+        )}
         {workflow.selectedNode && (
           <PropertiesPanel
             node={workflow.selectedNode}
@@ -185,6 +275,24 @@ export function WorkflowBuilder() {
             onUpdate={workflow.updateNodeData}
           />
         )}
+        <AnimatePresence>
+          {replay.isReplayMode && (
+            <TraceReplay
+              trace={replay.trace}
+              isPlaying={replay.isPlaying}
+              currentIndex={replay.currentIndex}
+              speed={replay.speed}
+              onPlay={replay.play}
+              onPause={replay.pause}
+              onStepForward={replay.stepForward}
+              onSeek={replay.seek}
+              onSpeedChange={replay.setSpeed}
+              onClose={replay.exitReplay}
+              currentTime={replay.currentTime}
+              totalTime={replay.totalTime}
+            />
+          )}
+        </AnimatePresence>
       </div>
 
       {showLoad && (
@@ -194,6 +302,23 @@ export function WorkflowBuilder() {
           onDelete={(id) => workflow.deleteWorkflow(id)}
           onClose={() => setShowLoad(false)}
           onNew={workflow.clearCanvas}
+        />
+      )}
+
+      {personaEditorNode && (
+        <PersonaEditor
+          nodeId={personaEditorNode.id}
+          currentType={personaEditorNode.type || ""}
+          customPersona={workflow.customPersonas[personaEditorNode.id]}
+          onSave={(nodeId, persona) => {
+            if (Object.keys(persona).length === 0) {
+              workflow.clearCustomPersona(nodeId)
+            } else {
+              workflow.setCustomPersona(nodeId, persona)
+            }
+            setPersonaEditorNodeId(null)
+          }}
+          onClose={() => setPersonaEditorNodeId(null)}
         />
       )}
     </div>

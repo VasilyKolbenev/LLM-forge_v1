@@ -1,0 +1,28 @@
+meta:
+  name: "Full Fine-tune (No LoRA)"
+  task_type: sft
+  difficulty: advanced
+  hardware: "1x 48GB"
+  tags: [sft, full-finetune, no-lora]
+  description: "Full parameter fine-tuning without LoRA adapters"
+
+task: sft
+model:
+  name: meta-llama/Meta-Llama-3-8B-Instruct
+  dtype: bfloat16
+dataset:
+  path: data/instructions.csv
+  format: csv
+  text_column: text
+  test_size: 0.1
+training:
+  epochs: 2
+  learning_rate: 2.0e-5
+  batch_size: 1
+  gradient_accumulation: 16
+  max_seq_length: 2048
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  full_finetune: true
+output:
+  dir: ./outputs/full-finetune-no-lora

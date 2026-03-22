@@ -1,0 +1,35 @@
+meta:
+  name: "Multi-GPU FSDP SFT"
+  task_type: sft
+  difficulty: advanced
+  hardware: "2x+ 24GB"
+  tags: [sft, fsdp, multi-gpu, distributed]
+  description: "Distributed SFT with FSDP across multiple GPUs"
+
+task: sft
+model:
+  name: meta-llama/Meta-Llama-3-8B-Instruct
+  dtype: bfloat16
+dataset:
+  path: data/instructions.csv
+  format: csv
+  text_column: text
+  test_size: 0.1
+training:
+  epochs: 3
+  learning_rate: 2.0e-4
+  batch_size: 4
+  gradient_accumulation: 2
+  max_seq_length: 4096
+  warmup_ratio: 0.03
+  strategy: fsdp
+fsdp:
+  sharding_strategy: FULL_SHARD
+  cpu_offload: false
+  mixed_precision: bf16
+lora:
+  r: 16
+  alpha: 32
+  target_modules: [q_proj, v_proj, k_proj, o_proj]
+output:
+  dir: ./outputs/fsdp-multi-gpu-sft

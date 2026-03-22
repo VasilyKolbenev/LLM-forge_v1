@@ -1,0 +1,27 @@
+meta:
+  name: "Reranker Relevance Training"
+  task_type: reranker
+  difficulty: intermediate
+  hardware: "1x 16GB"
+  tags: [reranker, relevance, search]
+  description: "Train a cross-encoder reranker for search relevance"
+
+task: reranker
+model:
+  name: BAAI/bge-reranker-base
+  dtype: float32
+dataset:
+  path: data/reranker_triples.csv
+  format: csv
+  query_column: query
+  positive_column: positive
+  negative_column: negative
+  test_size: 0.1
+training:
+  epochs: 3
+  learning_rate: 1.0e-5
+  batch_size: 16
+  warmup_ratio: 0.1
+  max_seq_length: 512
+output:
+  dir: ./outputs/reranker-relevance

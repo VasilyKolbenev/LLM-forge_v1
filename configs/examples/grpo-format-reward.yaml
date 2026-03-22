@@ -1,0 +1,22 @@
+# GRPO training with format compliance reward
+inherit:
+  - base
+  - models/qwen2.5-3b
+  - strategies/qlora
+  - tasks/grpo
+
+dataset:
+  path: data/prompts.jsonl
+  format: jsonl
+  text_column: prompt
+
+grpo:
+  reward_function: format_compliance
+  reward_kwargs:
+    expected_format: json
+  num_generations: 4
+  max_completion_length: 512
+  beta: 0.1
+
+output:
+  dir: ./outputs/grpo-format
