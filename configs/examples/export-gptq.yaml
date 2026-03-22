@@ -1,0 +1,15 @@
+# GPTQ Export — GPT Post-Training Quantization
+# Produces HuggingFace-compatible quantized model
+
+model_path: ./outputs/cam-sft/merged
+
+export:
+  format: gptq
+  output_path: ./outputs/cam-sft/model-gptq
+  gptq:
+    bits: 4                     # 2, 3, 4, or 8
+    group_size: 128             # 32, 64, or 128
+    desc_act: false
+    calibration_data: auto
+    calibration_samples: 128
+    text_column: text
