@@ -33,6 +33,9 @@ const PALETTE_ITEMS: PaletteItem[] = [
   { type: "canary", label: "Canary", group: "Ops" },
   { type: "feedback", label: "Feedback", group: "Ops" },
   { type: "tracer", label: "Tracer", group: "Ops" },
+  { type: "collectTraces", label: "Collect Traces", group: "Closed Loop" },
+  { type: "buildDataset", label: "Build Dataset", group: "Closed Loop" },
+  { type: "regressionEval", label: "Regression Eval", group: "Closed Loop" },
   { type: "group", label: "Group", group: "Structure" },
 ]
 

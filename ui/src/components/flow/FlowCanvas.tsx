@@ -42,6 +42,9 @@ const nodeTypes = {
   canary: AgentPersonaNode,
   feedback: AgentPersonaNode,
   tracer: AgentPersonaNode,
+  collectTraces: AgentPersonaNode,
+  buildDataset: AgentPersonaNode,
+  regressionEval: AgentPersonaNode,
   group: AgentPersonaNode,
 }
 

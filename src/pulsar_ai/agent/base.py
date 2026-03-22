@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from pulsar_ai.agent.client import ModelClient
@@ -74,6 +75,8 @@ IMPORTANT: Always start with a Thought. Use tools when needed. Give a Final Answ
         self.guardrails = guardrails or GuardrailsConfig()
         self.use_native_tools = use_native_tools
         self._trace: list[dict[str, Any]] = []
+        self._config: dict[str, Any] = {}
+        self.last_trace_id: str = ""
 
     def run(self, user_input: str, max_steps: int | None = None) -> str:
         """Run the agent on a user query.
@@ -90,6 +93,8 @@ IMPORTANT: Always start with a Thought. Use tools when needed. Give a Final Answ
         """
         effective_max = max_steps or self.guardrails.max_iterations
         self._trace = []
+        start_time = time.time()
+        final_answer = ""
 
         # Inject tool descriptions into system prompt for ReAct mode
         if not self.use_native_tools and self.memory.message_count == 0:
@@ -104,14 +109,54 @@ IMPORTANT: Always start with a Thought. Use tools when needed. Give a Final Answ
         for step in range(effective_max):
             if not self.guardrails.check_iteration(step):
                 logger.warning("Agent stopped: max iterations reached (%d)", step)
-                return self._force_final_answer()
+                final_answer = self._force_final_answer()
+                break
 
             result = self._step()
             if result is not None:
-                return result
+                final_answer = result
+                break
+        else:
+            logger.warning(
+                "Agent exhausted all %d steps without final answer",
+                effective_max,
+            )
+            final_answer = self._force_final_answer()
 
-        logger.warning("Agent exhausted all %d steps without final answer", effective_max)
-        return self._force_final_answer()
+        self._save_trace(user_input, final_answer, start_time)
+        return final_answer
+
+    def _save_trace(
+        self,
+        user_input: str,
+        final_answer: str,
+        start_time: float,
+    ) -> None:
+        """Persist the execution trace to the trace store.
+
+        Args:
+            user_input: Original user query.
+            final_answer: Agent's final response.
+            start_time: Unix timestamp when run() started.
+        """
+        try:
+            from pulsar_ai.storage.trace_store import TraceStore
+
+            store = TraceStore()
+            self.last_trace_id = store.save_trace(
+                {
+                    "agent_id": self._config.get("agent", {}).get("name", ""),
+                    "model_name": self._config.get("model", {}).get("name", ""),
+                    "user_query": user_input,
+                    "response": final_answer,
+                    "trace_json": self._trace,
+                    "status": "success" if final_answer else "error",
+                    "tokens_used": getattr(self, "_total_tokens", 0),
+                    "latency_ms": int((time.time() - start_time) * 1000),
+                }
+            )
+        except Exception:
+            logger.debug("Failed to save trace", exc_info=True)
 
     def _step(self) -> str | None:
         """Execute a single ReAct step.
@@ -339,10 +384,12 @@ IMPORTANT: Always start with a Thought. Use tools when needed. Give a Final Answ
 
         guardrails = GuardrailsConfig.from_config(config)
 
-        return cls(
+        agent = cls(
             client=client,
             tools=tools or ToolRegistry(),
             memory=memory,
             guardrails=guardrails,
             use_native_tools=config.get("agent", {}).get("native_tools"),
         )
+        agent._config = config
+        return agent

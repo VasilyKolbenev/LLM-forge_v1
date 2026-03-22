@@ -8,6 +8,9 @@ from typing import Any, Protocol
 from pulsar_ai.pipeline.steps import check_condition, dispatch_step
 from pulsar_ai.pipeline.tracker import PipelineTracker
 
+# Import closed-loop steps so they auto-register via @register_step
+import pulsar_ai.pipeline.closed_loop_steps as _closed_loop_steps  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 _VAR_PATTERN = re.compile(r"\$\{(\w+)\.(\w+)\}")
