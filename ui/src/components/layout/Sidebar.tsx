@@ -12,6 +12,7 @@ import {
   FileText,
   GitBranch,
   ClipboardCheck,
+  Cpu,
   LogOut,
   User,
 } from "lucide-react"
@@ -32,6 +33,7 @@ const links = [
   { to: "/agent", icon: MessageSquare, label: "Agent Chat" },
   { to: "/traces", icon: Activity, label: "Traces" },
   { to: "/agent-eval", icon: ClipboardCheck, label: "Agent Eval" },
+  { to: "/openclaw", icon: Cpu, label: "OpenClaw" },
   { to: "/lifecycle", icon: GitBranch, label: "Lifecycle" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ]

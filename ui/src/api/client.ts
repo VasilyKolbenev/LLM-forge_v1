@@ -178,6 +178,35 @@ export const api = {
       "/agent-eval/suites",
     ),
 
+  // OpenClaw
+  getOpenClawHealth: () => request<Record<string, unknown>>("/openclaw/health"),
+  getOpenClawSessions: (status?: string) =>
+    request<Record<string, unknown>>(`/openclaw/sessions${status ? `?status=${status}` : ""}`),
+  createOpenClawSession: (config: { name: string; model: string; tools: string[]; system_prompt: string }) =>
+    request<Record<string, unknown>>("/openclaw/sessions", { method: "POST", body: JSON.stringify(config) }),
+  runOpenClawSession: (id: string, input: string) =>
+    request<Record<string, unknown>>(`/openclaw/sessions/${id}/run`, {
+      method: "POST", body: JSON.stringify({ input }),
+    }),
+  stopOpenClawSession: (id: string) =>
+    request<Record<string, unknown>>(`/openclaw/sessions/${id}`, { method: "DELETE" }),
+  getOpenClawSessionTrace: (id: string) =>
+    request<Record<string, unknown>>(`/openclaw/sessions/${id}/trace`),
+  ingestOpenClawTraces: (sessionId: string) =>
+    request<Record<string, unknown>>(`/openclaw/sessions/${sessionId}/ingest`, { method: "POST" }),
+  getOpenClawDeployments: () =>
+    request<Record<string, unknown>>("/openclaw/deployments"),
+  createOpenClawDeployment: (
+    config: { name: string; model: string; tools: string[]; system_prompt: string },
+    policy: Record<string, unknown>,
+  ) =>
+    request<Record<string, unknown>>("/openclaw/deployments", {
+      method: "POST",
+      body: JSON.stringify({ ...config, policy }),
+    }),
+  stopOpenClawDeployment: (id: string) =>
+    request<Record<string, unknown>>(`/openclaw/deployments/${id}`, { method: "DELETE" }),
+
   // Health
   health: () => request<{ status: string }>("/health"),
 

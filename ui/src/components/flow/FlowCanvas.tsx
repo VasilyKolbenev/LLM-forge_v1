@@ -45,6 +45,8 @@ const nodeTypes = {
   collectTraces: AgentPersonaNode,
   buildDataset: AgentPersonaNode,
   regressionEval: AgentPersonaNode,
+  openclawSession: AgentPersonaNode,
+  nemoclawDeploy: AgentPersonaNode,
   group: AgentPersonaNode,
 }
 

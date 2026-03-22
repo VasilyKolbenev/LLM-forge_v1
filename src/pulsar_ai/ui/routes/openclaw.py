@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 from pulsar_ai.openclaw.adapter import OpenClawAdapter
 from pulsar_ai.openclaw.nemoclaw import NemoClawManager, SandboxPolicy
+from pulsar_ai.openclaw.trace_ingestion import OpenClawTraceIngester
+from pulsar_ai.storage.trace_store import TraceStore
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,7 @@ router = APIRouter(prefix="/openclaw", tags=["openclaw"])
 
 _adapter: OpenClawAdapter | None = None
 _manager: NemoClawManager | None = None
+_ingester: OpenClawTraceIngester | None = None
 
 
 def _get_adapter() -> OpenClawAdapter:
@@ -41,6 +44,18 @@ def _get_manager() -> NemoClawManager:
     if _manager is None:
         _manager = NemoClawManager(_get_adapter())
     return _manager
+
+
+def _get_ingester() -> OpenClawTraceIngester:
+    """Get or create the global trace ingester.
+
+    Returns:
+        OpenClawTraceIngester instance.
+    """
+    global _ingester
+    if _ingester is None:
+        _ingester = OpenClawTraceIngester(_get_adapter(), TraceStore())
+    return _ingester
 
 
 # ── Pydantic models ───────────────────────────────────────────────
@@ -157,6 +172,38 @@ def get_session_trace(session_id: str) -> dict[str, Any]:
     adapter = _get_adapter()
     trace = adapter.get_trace(session_id)
     return {"session_id": session_id, "trace": trace}
+
+
+# ── Trace ingestion routes ────────────────────────────────────────
+
+
+@router.post("/sessions/{session_id}/ingest")
+def ingest_session_traces(session_id: str) -> dict[str, Any]:
+    """Ingest traces from an OpenClaw session into TraceStore.
+
+    Args:
+        session_id: Session to ingest traces from.
+
+    Returns:
+        Dict with session_id and list of ingested trace_ids.
+    """
+    ingester = _get_ingester()
+    trace_ids = ingester.ingest_session(session_id)
+    return {"session_id": session_id, "trace_ids": trace_ids}
+
+
+@router.post("/sessions/ingest-all")
+def ingest_all_traces(status: str = "completed") -> dict[str, Any]:
+    """Ingest traces from all sessions with given status.
+
+    Args:
+        status: Filter sessions by this status.
+
+    Returns:
+        Dict with sessions_processed and traces_ingested counts.
+    """
+    ingester = _get_ingester()
+    return ingester.ingest_all_sessions(status=status)
 
 
 # ── Deployment routes ─────────────────────────────────────────────

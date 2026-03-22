@@ -1,9 +1,10 @@
-"""Tests for OpenClaw adapter and NemoClaw sandbox deployment."""
+"""Tests for OpenClaw adapter, NemoClaw sandbox, and trace ingestion."""
 
 from unittest.mock import MagicMock, patch
 
 from pulsar_ai.openclaw.adapter import OpenClawAdapter, OpenClawSession
 from pulsar_ai.openclaw.nemoclaw import NemoClawManager, SandboxPolicy
+from pulsar_ai.openclaw.trace_ingestion import OpenClawTraceIngester
 
 # ── OpenClaw Adapter Tests ────────────────────────────────────────
 
@@ -477,3 +478,143 @@ class TestOpenClawAPI:
         assert "deployment_id" in data
         assert data["status"] == "running"
         assert data["policy"]["allow_network"] is True
+
+
+# ── Trace Ingestion Tests ────────────────────────────────────────
+
+
+class TestOpenClawTraceIngestion:
+    """Tests for OpenClawTraceIngester with mocked adapter and store."""
+
+    def setup_method(self) -> None:
+        self.mock_adapter = MagicMock(spec=OpenClawAdapter)
+        self.mock_store = MagicMock()
+        self.mock_store.save_trace.side_effect = lambda data: f"trace-{data['agent_id'][:8]}"
+        self.ingester = OpenClawTraceIngester(self.mock_adapter, self.mock_store)
+
+    def test_trace_ingestion_single_session(self) -> None:
+        """Test ingesting traces from a single OpenClaw session."""
+        mock_session = OpenClawSession(
+            session_id="sess-ingest",
+            agent_name="test-agent",
+            model="llama-3",
+            status="completed",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        self.mock_adapter.get_session.return_value = mock_session
+        self.mock_adapter.get_trace.return_value = [
+            {"type": "llm_response", "content": "Thinking about the query..."},
+            {"type": "tool_call", "tool": "search", "content": "search query"},
+            {"type": "observation", "result": "found 3 items"},
+        ]
+
+        trace_ids = self.ingester.ingest_session("sess-ingest")
+
+        assert len(trace_ids) == 3
+        assert self.mock_store.save_trace.call_count == 3
+        self.mock_adapter.get_session.assert_called_once_with("sess-ingest")
+        self.mock_adapter.get_trace.assert_called_once_with("sess-ingest")
+
+    def test_trace_ingestion_all_sessions(self) -> None:
+        """Test ingesting traces from all completed sessions."""
+        sessions = [
+            OpenClawSession(
+                session_id="s1",
+                agent_name="agent-a",
+                model="llama",
+                status="completed",
+                created_at="2026-01-01T00:00:00Z",
+            ),
+            OpenClawSession(
+                session_id="s2",
+                agent_name="agent-b",
+                model="mistral",
+                status="completed",
+                created_at="2026-01-02T00:00:00Z",
+            ),
+        ]
+        self.mock_adapter.list_sessions.return_value = sessions
+        self.mock_adapter.get_session.side_effect = lambda sid: (
+            sessions[0] if sid == "s1" else sessions[1]
+        )
+        self.mock_adapter.get_trace.side_effect = lambda sid: (
+            [{"type": "llm_response", "content": "hello"}]
+            if sid == "s1"
+            else [
+                {"type": "tool_call", "tool": "calc", "content": "2+2"},
+                {"type": "observation", "result": "4"},
+            ]
+        )
+
+        result = self.ingester.ingest_all_sessions(status="completed")
+
+        assert result["sessions_processed"] == 2
+        assert result["traces_ingested"] == 3
+        self.mock_adapter.list_sessions.assert_called_once_with(status="completed")
+
+    def test_convert_trace_format(self) -> None:
+        """Test converting OpenClaw trace step to Pulsar AI format."""
+        session = OpenClawSession(
+            session_id="sess-conv",
+            agent_name="converter",
+            model="gpt-4",
+            status="completed",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        openclaw_step = {
+            "type": "tool_call",
+            "tool": "search",
+            "content": "query about AI",
+            "tokens": 50,
+            "latency_ms": 120,
+        }
+
+        result = self.ingester._convert_trace(openclaw_step, session)
+
+        assert result["agent_id"] == "openclaw:converter"
+        assert result["model_name"] == "gpt-4"
+        assert result["status"] == "success"
+        assert result["tokens_used"] == 50
+        assert result["latency_ms"] == 120
+        assert result["trace_json"] == [openclaw_step]
+
+    def test_trace_ingestion_session_not_found(self) -> None:
+        """Test ingestion when session does not exist."""
+        self.mock_adapter.get_session.return_value = None
+
+        trace_ids = self.ingester.ingest_session("nonexistent")
+
+        assert trace_ids == []
+        self.mock_store.save_trace.assert_not_called()
+
+    def test_trace_ingestion_empty_trace(self) -> None:
+        """Test ingestion when session has no trace data."""
+        mock_session = OpenClawSession(
+            session_id="sess-empty",
+            agent_name="empty-agent",
+            model="llama",
+            status="completed",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        self.mock_adapter.get_session.return_value = mock_session
+        self.mock_adapter.get_trace.return_value = []
+
+        trace_ids = self.ingester.ingest_session("sess-empty")
+
+        assert trace_ids == []
+        self.mock_store.save_trace.assert_not_called()
+
+    def test_convert_trace_error_status(self) -> None:
+        """Test that error trace steps get error status in conversion."""
+        session = OpenClawSession(
+            session_id="sess-err",
+            agent_name="err-agent",
+            model="llama",
+            status="failed",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        error_step = {"type": "error", "content": "Tool execution failed"}
+
+        result = self.ingester._convert_trace(error_step, session)
+
+        assert result["status"] == "error"
