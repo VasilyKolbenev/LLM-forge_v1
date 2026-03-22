@@ -13,14 +13,22 @@ import {
 import { NodePalette } from "@/components/flow/NodePalette"
 import { FlowCanvas } from "@/components/flow/FlowCanvas"
 import { PropertiesPanel } from "@/components/flow/PropertiesPanel"
+import { AgentOffice } from "@/components/flow/office/AgentOffice"
+import { ViewToggle } from "@/components/flow/ViewToggle"
 import { useWorkflow, type WorkflowMeta } from "@/hooks/useWorkflow"
+
+type ViewMode = "dag" | "office" | "split"
 
 function WorkflowToolbar({
   workflow,
   onOpenLoad,
+  viewMode,
+  onViewModeChange,
 }: {
   workflow: ReturnType<typeof useWorkflow>
   onOpenLoad: () => void
+  viewMode: ViewMode
+  onViewModeChange: (v: ViewMode) => void
 }) {
   return (
     <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-card">
@@ -31,6 +39,7 @@ function WorkflowToolbar({
         className="bg-transparent text-sm font-medium focus:outline-none focus:border-b focus:border-primary w-48"
         placeholder="Workflow name..."
       />
+      <ViewToggle view={viewMode} onChange={onViewModeChange} />
       <div className="flex-1" />
       <button
         onClick={() => workflow.loadBankingTemplate()}
@@ -150,6 +159,7 @@ function LoadModal({
 export function WorkflowBuilder() {
   const workflow = useWorkflow()
   const [showLoad, setShowLoad] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>("dag")
 
   useEffect(() => {
     workflow.loadList().then((list) => {
@@ -165,9 +175,22 @@ export function WorkflowBuilder() {
     setShowLoad(true)
   }
 
+  const handleOfficeSelectNode = (id: string) => {
+    const node = workflow.nodes.find((n) => n.id === id) ?? null
+    workflow.setSelectedNode(node)
+  }
+
+  const showDag = viewMode === "dag" || viewMode === "split"
+  const showOffice = viewMode === "office" || viewMode === "split"
+
   return (
     <div className="h-[calc(100vh-1rem)] flex flex-col -m-6">
-      <WorkflowToolbar workflow={workflow} onOpenLoad={handleOpenLoad} />
+      <WorkflowToolbar
+        workflow={workflow}
+        onOpenLoad={handleOpenLoad}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
       {workflow.runError && (
         <div className="mx-4 mt-3 px-3 py-2 rounded border border-destructive/30 bg-destructive/10 text-destructive text-xs">
           {workflow.runError}
@@ -175,9 +198,18 @@ export function WorkflowBuilder() {
       )}
       <div className="flex flex-1 min-h-0">
         <NodePalette />
-        <ReactFlowProvider>
-          <FlowCanvas workflow={workflow} />
-        </ReactFlowProvider>
+        {showDag && (
+          <ReactFlowProvider>
+            <FlowCanvas workflow={workflow} />
+          </ReactFlowProvider>
+        )}
+        {showOffice && (
+          <AgentOffice
+            nodes={workflow.nodes}
+            selectedNodeId={workflow.selectedNode?.id ?? null}
+            onSelectNode={handleOfficeSelectNode}
+          />
+        )}
         {workflow.selectedNode && (
           <PropertiesPanel
             node={workflow.selectedNode}
