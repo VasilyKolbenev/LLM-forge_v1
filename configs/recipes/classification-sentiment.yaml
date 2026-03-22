@@ -1,0 +1,27 @@
+meta:
+  name: "Sentiment Classification"
+  task_type: classification
+  difficulty: beginner
+  hardware: "1x 12GB"
+  tags: [classification, sentiment, nlp]
+  description: "Train a sentiment classifier on labeled text data"
+
+task: classification
+model:
+  name: distilbert-base-uncased
+  dtype: float32
+  num_labels: 3
+dataset:
+  path: data/sentiment.csv
+  format: csv
+  text_column: text
+  label_columns: [label]
+  test_size: 0.15
+training:
+  epochs: 5
+  learning_rate: 3.0e-5
+  batch_size: 32
+  warmup_ratio: 0.1
+  max_seq_length: 256
+output:
+  dir: ./outputs/classification-sentiment

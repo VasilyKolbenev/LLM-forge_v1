@@ -1,0 +1,19 @@
+meta:
+  name: "AWQ Export"
+  task_type: export
+  difficulty: intermediate
+  hardware: "1x 24GB"
+  tags: [export, awq, quantization]
+  description: "Export model with AWQ 4-bit quantization"
+
+task: export
+model:
+  name: meta-llama/Meta-Llama-3-8B-Instruct
+  adapter_path: ./outputs/llama-instruct-sft/lora
+export:
+  format: awq
+  quantization: w4_gemm
+  calibration_samples: 128
+  push_to_hub: false
+output:
+  dir: ./outputs/export-awq

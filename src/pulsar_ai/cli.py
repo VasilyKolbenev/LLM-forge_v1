@@ -1234,6 +1234,123 @@ def _show_config_summary(config: dict, task: str) -> None:
     console.print(table)
 
 
+# ---------------------------------------------------------------
+# Recipe Hub
+# ---------------------------------------------------------------
+
+
+@main.group()
+def recipes() -> None:
+    """Browse and run recipe templates."""
+
+
+@recipes.command(name="list")
+@click.option("--task", "task_type", default=None, help="Filter by task.")
+@click.option("--tag", default=None, help="Filter by tag.")
+@click.option(
+    "--difficulty",
+    default=None,
+    type=click.Choice(["beginner", "intermediate", "advanced"]),
+    help="Filter by difficulty.",
+)
+def recipes_list(
+    task_type: Optional[str],
+    tag: Optional[str],
+    difficulty: Optional[str],
+) -> None:
+    """List available recipes.
+
+    \b
+    Examples:
+        pulsar recipes list
+        pulsar recipes list --task sft --difficulty beginner
+    """
+    from pulsar_ai.recipes import RecipeRegistry
+
+    registry = RecipeRegistry()
+    items = registry.list_recipes(
+        task_type=task_type, tag=tag, difficulty=difficulty
+    )
+
+    if not items:
+        console.print("[dim]No recipes found.[/dim]")
+        return
+
+    table = Table(title="Recipes")
+    table.add_column("Name", style="cyan")
+    table.add_column("Task", style="green")
+    table.add_column("Difficulty")
+    table.add_column("Hardware", style="dim")
+    table.add_column("Description")
+
+    for r in items:
+        diff = r.get("difficulty", "?")
+        diff_style = {
+            "beginner": "green",
+            "intermediate": "yellow",
+            "advanced": "red",
+        }.get(diff, "white")
+        table.add_row(
+            r.get("file", "?"),
+            r.get("task_type", "?"),
+            f"[{diff_style}]{diff}[/{diff_style}]",
+            r.get("hardware", "?"),
+            (r.get("description", "") or "")[:60],
+        )
+
+    console.print(table)
+
+
+@recipes.command(name="run")
+@click.argument("name")
+@click.argument("overrides", nargs=-1)
+def recipes_run(name: str, overrides: tuple[str, ...]) -> None:
+    """Run a recipe by name with optional key=value overrides.
+
+    \b
+    Examples:
+        pulsar recipes run llama-instruct-sft
+        pulsar recipes run dpo-starter training.epochs=5
+    """
+    from pulsar_ai.recipes import RecipeRegistry
+    from pulsar_ai.config import load_config, _set_nested
+
+    registry = RecipeRegistry()
+    try:
+        config = registry.load_recipe(name)
+    except FileNotFoundError:
+        console.print(f"[red]Recipe not found: {name}[/red]")
+        sys.exit(1)
+
+    parsed = _parse_overrides(overrides)
+    for key, value in parsed.items():
+        _set_nested(config, key, value)
+
+    task = config.get("task", "sft")
+    console.print(
+        Panel(
+            f"Recipe: [bold]{name}[/bold]\n"
+            f"Task: {task}\n"
+            f"Model: {config.get('model', {}).get('name', '?')}",
+            title="Recipe Run",
+        )
+    )
+
+    from pulsar_ai.dispatch import dispatch_task
+
+    try:
+        result = dispatch_task(task, config)
+        console.print("[green]Recipe completed successfully![/green]")
+        if isinstance(result, dict):
+            for k, v in result.items():
+                if isinstance(v, (str, int, float)):
+                    console.print(f"  {k}: {v}")
+    except Exception as exc:
+        console.print(f"[red]Recipe failed:[/red] {exc}")
+        logger.exception("Recipe run error for %s", name)
+        sys.exit(1)
+
+
 def _show_training_results(results: dict) -> None:
     """Display training results panel.
 

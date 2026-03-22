@@ -1,0 +1,18 @@
+meta:
+  name: "Export for vLLM"
+  task_type: export
+  difficulty: beginner
+  hardware: "1x 24GB"
+  tags: [export, vllm, serving]
+  description: "Merge LoRA adapter and export for vLLM serving"
+
+task: export
+model:
+  name: meta-llama/Meta-Llama-3-8B-Instruct
+  adapter_path: ./outputs/llama-instruct-sft/lora
+export:
+  format: merged
+  dtype: bfloat16
+  push_to_hub: false
+output:
+  dir: ./outputs/export-vllm

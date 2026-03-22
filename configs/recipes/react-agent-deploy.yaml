@@ -1,0 +1,33 @@
+meta:
+  name: "ReAct Agent Deployment"
+  task_type: agent
+  difficulty: intermediate
+  hardware: "1x 12GB"
+  tags: [agent, react, deployment]
+  description: "Deploy a ReAct agent with tool-calling capabilities"
+
+task: agent
+model:
+  name: Qwen/Qwen2.5-3B-Instruct
+  base_url: http://localhost:8080/v1
+  timeout: 120
+agent:
+  name: react-assistant
+  system_prompt: >
+    You are a helpful assistant that uses tools to answer questions.
+    Think step by step before acting.
+tools:
+  - name: search_files
+    module: pulsar_ai.agent.builtin_tools
+  - name: read_file
+    module: pulsar_ai.agent.builtin_tools
+  - name: calculate
+    module: pulsar_ai.agent.builtin_tools
+memory:
+  max_tokens: 4096
+  strategy: sliding_window
+guardrails:
+  max_iterations: 15
+  max_tokens: 8192
+output:
+  dir: ./outputs/react-agent-deploy

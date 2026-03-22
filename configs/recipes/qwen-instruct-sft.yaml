@@ -1,0 +1,30 @@
+meta:
+  name: "Qwen 2.5 Instruct SFT"
+  task_type: sft
+  difficulty: beginner
+  hardware: "1x 16GB"
+  tags: [qwen, instruct, chat]
+  description: "Supervised fine-tune Qwen 2.5 3B on instruction data"
+
+task: sft
+model:
+  name: Qwen/Qwen2.5-3B-Instruct
+  dtype: bfloat16
+dataset:
+  path: data/instructions.csv
+  format: csv
+  text_column: text
+  test_size: 0.1
+training:
+  epochs: 3
+  learning_rate: 2.0e-4
+  batch_size: 8
+  gradient_accumulation: 2
+  max_seq_length: 2048
+  warmup_ratio: 0.03
+lora:
+  r: 16
+  alpha: 32
+  target_modules: [q_proj, v_proj, k_proj, o_proj]
+output:
+  dir: ./outputs/qwen-instruct-sft

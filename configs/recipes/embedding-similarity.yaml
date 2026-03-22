@@ -1,0 +1,28 @@
+meta:
+  name: "Embedding Similarity Fine-tune"
+  task_type: embedding
+  difficulty: beginner
+  hardware: "1x 16GB"
+  tags: [embedding, similarity, retrieval]
+  description: "Fine-tune embedding model for semantic similarity"
+
+task: embedding
+model:
+  name: BAAI/bge-base-en-v1.5
+  dtype: float32
+dataset:
+  path: data/pairs.csv
+  format: csv
+  query_column: query
+  positive_column: positive
+  test_size: 0.1
+training:
+  epochs: 5
+  learning_rate: 2.0e-5
+  batch_size: 32
+  warmup_ratio: 0.1
+  max_seq_length: 512
+loss:
+  type: multiple_negatives_ranking
+output:
+  dir: ./outputs/embedding-similarity
