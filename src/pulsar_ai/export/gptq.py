@@ -42,17 +42,14 @@ def export_gptq(config: dict) -> dict:
     calibration_data = _load_calibration_data(config)
 
     logger.info(
-        "Starting GPTQ quantization: %s -> %s "
-        "(%d-bit, group_size=%d)",
+        "Starting GPTQ quantization: %s -> %s " "(%d-bit, group_size=%d)",
         model_path,
         output_path,
         gptq_config["bits"],
         gptq_config["group_size"],
     )
 
-    result_path = _quantize_gptq(
-        model_path, output_path, gptq_config, calibration_data
-    )
+    result_path = _quantize_gptq(model_path, output_path, gptq_config, calibration_data)
 
     file_size_mb = _dir_size_mb(result_path)
     logger.info(
@@ -85,15 +82,11 @@ def _get_gptq_config(gptq_section: dict) -> dict:
     desc_act = gptq_section.get("desc_act", False)
 
     if bits not in _VALID_BITS:
-        raise ValueError(
-            f"Invalid GPTQ bits={bits}. "
-            f"Must be one of {sorted(_VALID_BITS)}"
-        )
+        raise ValueError(f"Invalid GPTQ bits={bits}. " f"Must be one of {sorted(_VALID_BITS)}")
 
     if group_size not in _VALID_GROUP_SIZES:
         raise ValueError(
-            f"Invalid GPTQ group_size={group_size}. "
-            f"Must be one of {sorted(_VALID_GROUP_SIZES)}"
+            f"Invalid GPTQ group_size={group_size}. " f"Must be one of {sorted(_VALID_GROUP_SIZES)}"
         )
 
     return {
@@ -127,16 +120,13 @@ def _quantize_gptq(
         from auto_gptq import AutoGPTQForCausalLM, BaseQuantizeConfig
     except ImportError:
         raise ImportError(
-            "auto-gptq is not installed. "
-            "Install with: pip install 'pulsar-ai[gptq]'"
+            "auto-gptq is not installed. " "Install with: pip install 'pulsar-ai[gptq]'"
         )
 
     from transformers import AutoTokenizer
 
     try:
-        logger.info(
-            "Loading model for GPTQ quantization: %s", model_path
-        )
+        logger.info("Loading model for GPTQ quantization: %s", model_path)
         tokenizer = AutoTokenizer.from_pretrained(model_path)
 
         quantize_config = BaseQuantizeConfig(
@@ -145,19 +135,13 @@ def _quantize_gptq(
             desc_act=gptq_config["desc_act"],
         )
 
-        model = AutoGPTQForCausalLM.from_pretrained(
-            model_path, quantize_config=quantize_config
-        )
+        model = AutoGPTQForCausalLM.from_pretrained(model_path, quantize_config=quantize_config)
 
         # Tokenize calibration data
-        examples = [
-            tokenizer(text, return_tensors="pt")
-            for text in calibration_data
-        ]
+        examples = [tokenizer(text, return_tensors="pt") for text in calibration_data]
 
         logger.info(
-            "Quantizing with %d-bit, group_size=%d, "
-            "desc_act=%s (%d calibration samples)",
+            "Quantizing with %d-bit, group_size=%d, " "desc_act=%s (%d calibration samples)",
             gptq_config["bits"],
             gptq_config["group_size"],
             gptq_config["desc_act"],
@@ -174,9 +158,7 @@ def _quantize_gptq(
 
     except Exception:
         if Path(output_path).exists():
-            logger.warning(
-                "Cleaning up failed export: %s", output_path
-            )
+            logger.warning("Cleaning up failed export: %s", output_path)
             shutil.rmtree(output_path)
         raise
 
@@ -190,9 +172,5 @@ def _dir_size_mb(path: str) -> float:
     Returns:
         Size in megabytes.
     """
-    total = sum(
-        f.stat().st_size
-        for f in Path(path).rglob("*")
-        if f.is_file()
-    )
+    total = sum(f.stat().st_size for f in Path(path).rglob("*") if f.is_file())
     return total / (1024 * 1024)

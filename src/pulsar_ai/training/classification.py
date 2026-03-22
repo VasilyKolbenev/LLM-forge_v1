@@ -50,9 +50,7 @@ def validate_classification_dataset(
     required = {text_column, label_column}
     missing = required - set(df.columns)
     if missing:
-        errors.append(
-            f"Missing columns: {sorted(missing)}. Got: {sorted(df.columns)}"
-        )
+        errors.append(f"Missing columns: {sorted(missing)}. Got: {sorted(df.columns)}")
     return errors
 
 
@@ -90,9 +88,7 @@ def _run_classification_training(
     df = load_dataset_from_config(config)
     errors = validate_classification_dataset(df, text_column, label_column)
     if errors:
-        raise ValueError(
-            f"Classification dataset validation failed: {'; '.join(errors)}"
-        )
+        raise ValueError(f"Classification dataset validation failed: {'; '.join(errors)}")
 
     # Detect labels
     label_map = detect_labels(df, label_column)
@@ -105,9 +101,7 @@ def _run_classification_training(
     model_name = model_config.get("name")
     logger.info("Loading classification model: %s", model_name)
 
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name, trust_remote_code=True
-    )
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     model = AutoModelForSequenceClassification.from_pretrained(
         model_name,
         num_labels=num_labels,
@@ -203,9 +197,7 @@ def train_classification(config: dict, progress: Any = None) -> dict:
         hf_callbacks.append(make_hf_callback(progress))
 
     with track_experiment(config, task="classification") as tracker:
-        results = _run_classification_training(
-            config, callbacks=hf_callbacks
-        )
+        results = _run_classification_training(config, callbacks=hf_callbacks)
 
         tracker.log_metrics(
             {

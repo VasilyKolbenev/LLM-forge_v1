@@ -29,19 +29,14 @@ def start_server(
         ValueError: If model format is not supported.
     """
     model_dir = Path(model_path)
-    if model_dir.suffix == ".gguf" or (
-        model_dir.is_file()
-        and model_dir.name.endswith(".gguf")
-    ):
+    if model_dir.suffix == ".gguf" or (model_dir.is_file() and model_dir.name.endswith(".gguf")):
         raise ValueError(
             "SGLang requires HuggingFace model format, not GGUF. "
             "Use 'pulsar serve --backend llamacpp' for GGUF models, "
             "or 'pulsar export --format merged' first."
         )
 
-    args = _build_server_args(
-        model_path, host, port, tensor_parallel_size, mem_fraction
-    )
+    args = _build_server_args(model_path, host, port, tensor_parallel_size, mem_fraction)
 
     logger.info(
         "Starting SGLang server on %s:%d (model: %s)",
@@ -60,8 +55,7 @@ def start_server(
         _run_via_python_api(args)
     except ImportError:
         raise ImportError(
-            "sglang is not installed. "
-            "Install with: pip install 'pulsar-ai[sglang]'"
+            "sglang is not installed. " "Install with: pip install 'pulsar-ai[sglang]'"
         )
 
 

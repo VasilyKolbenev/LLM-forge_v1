@@ -6,7 +6,6 @@ Produces full model checkpoints (not LoRA adapters).
 """
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -89,9 +88,7 @@ def _run_embedding_training(
     schema = embed_config.get("schema", "triplet")
     errors = validate_embedding_dataset(df, schema=schema)
     if errors:
-        raise ValueError(
-            f"Embedding dataset validation failed: {'; '.join(errors)}"
-        )
+        raise ValueError(f"Embedding dataset validation failed: {'; '.join(errors)}")
 
     train_dataset = Dataset.from_pandas(df)
 
@@ -99,9 +96,7 @@ def _run_embedding_training(
     loss_name = embed_config.get("loss", "MultipleNegativesRankingLoss")
     loss_cls = getattr(st_losses, loss_name, None)
     if loss_cls is None:
-        raise ValueError(
-            f"Unknown loss function '{loss_name}' in sentence_transformers.losses"
-        )
+        raise ValueError(f"Unknown loss function '{loss_name}' in sentence_transformers.losses")
     loss = loss_cls(model)
     logger.info("Using loss: %s", loss_name)
 

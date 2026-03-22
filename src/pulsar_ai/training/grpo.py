@@ -139,9 +139,7 @@ def _load_custom_reward(path: Path) -> RewardFn:
     """
     path = Path(path)
     if ".." in path.parts:
-        raise ValueError(
-            f"Directory traversal blocked in reward path: {path}"
-        )
+        raise ValueError(f"Directory traversal blocked in reward path: {path}")
     if not path.exists():
         raise FileNotFoundError(f"Custom reward file not found: {path}")
 
@@ -152,9 +150,7 @@ def _load_custom_reward(path: Path) -> RewardFn:
     spec.loader.exec_module(module)
 
     if not hasattr(module, "reward_fn"):
-        raise AttributeError(
-            f"Custom reward file {path} must define 'reward_fn'"
-        )
+        raise AttributeError(f"Custom reward file {path} must define 'reward_fn'")
     return module.reward_fn  # type: ignore[return-value]
 
 
@@ -277,17 +273,13 @@ def _run_grpo_trl(
         device_map="auto",
         trust_remote_code=True,
     )
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name, trust_remote_code=True
-    )
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
 
     dataset = _load_grpo_dataset(config)
 
     grpo_args = GRPOConfig(
         per_device_train_batch_size=training_config.get("batch_size", 1),
-        gradient_accumulation_steps=training_config.get(
-            "gradient_accumulation", 8
-        ),
+        gradient_accumulation_steps=training_config.get("gradient_accumulation", 8),
         warmup_steps=training_config.get("warmup_steps", 10),
         num_train_epochs=training_config.get("epochs", 1),
         learning_rate=float(training_config.get("learning_rate", 5e-6)),

@@ -6,7 +6,6 @@ Produces full model checkpoints (not LoRA adapters).
 """
 
 import logging
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -27,9 +26,7 @@ def validate_reranker_dataset(df: pd.DataFrame) -> list[str]:
     required = {"query", "document", "relevance_score"}
     missing = required - set(df.columns)
     if missing:
-        errors.append(
-            f"Missing columns: {sorted(missing)}. Got: {sorted(df.columns)}"
-        )
+        errors.append(f"Missing columns: {sorted(missing)}. Got: {sorted(df.columns)}")
     return errors
 
 
@@ -70,9 +67,7 @@ def _run_reranker_training(
     df = load_dataset_from_config(config)
     errors = validate_reranker_dataset(df)
     if errors:
-        raise ValueError(
-            f"Reranker dataset validation failed: {'; '.join(errors)}"
-        )
+        raise ValueError(f"Reranker dataset validation failed: {'; '.join(errors)}")
 
     # Prepare training samples as list of (sentence_pair, score)
     train_samples = []

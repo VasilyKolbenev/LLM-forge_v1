@@ -32,9 +32,7 @@ async def list_recipes(
     Returns:
         List of recipe metadata dicts.
     """
-    return _registry.list_recipes(
-        task_type=task_type, tag=tag, difficulty=difficulty
-    )
+    return _registry.list_recipes(task_type=task_type, tag=tag, difficulty=difficulty)
 
 
 @router.get("/recipes/{name}")
@@ -50,15 +48,11 @@ async def get_recipe(name: str) -> dict:
     try:
         config = _registry.load_recipe(name)
     except FileNotFoundError:
-        raise HTTPException(
-            status_code=404, detail=f"Recipe '{name}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Recipe '{name}' not found")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    meta = _registry._read_meta(
-        _registry._dir / f"{name}.yaml"
-    )
+    meta = _registry._read_meta(_registry._dir / f"{name}.yaml")
     return {"meta": meta, "config": config}
 
 
@@ -75,9 +69,7 @@ async def run_recipe(name: str) -> dict:
     try:
         config = _registry.load_recipe(name)
     except FileNotFoundError:
-        raise HTTPException(
-            status_code=404, detail=f"Recipe '{name}' not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Recipe '{name}' not found")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 

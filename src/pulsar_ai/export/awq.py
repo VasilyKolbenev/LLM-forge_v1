@@ -48,14 +48,10 @@ def export_awq(config: dict) -> dict:
         quant_config["q_group_size"],
     )
 
-    result_path = _quantize_awq(
-        model_path, output_path, quant_config, calibration_data
-    )
+    result_path = _quantize_awq(model_path, output_path, quant_config, calibration_data)
 
     file_size_mb = _dir_size_mb(result_path)
-    logger.info(
-        "AWQ export complete: %s (%.1f MB)", result_path, file_size_mb
-    )
+    logger.info("AWQ export complete: %s (%.1f MB)", result_path, file_size_mb)
 
     return {
         "output_path": result_path,
@@ -110,9 +106,7 @@ def _load_calibration_data(config: dict) -> list[str]:
 
     # Option 1: explicit file path
     if cal_path not in ("auto", None) and Path(cal_path).exists():
-        return _read_calibration_file(
-            cal_path, text_column, cal_samples
-        )
+        return _read_calibration_file(cal_path, text_column, cal_samples)
 
     # Option 2: reuse training dataset
     if cal_path == "auto":
@@ -122,23 +116,14 @@ def _load_calibration_data(config: dict) -> list[str]:
                 "Using training dataset for calibration: %s",
                 dataset_path,
             )
-            return _read_calibration_file(
-                dataset_path, text_column, cal_samples
-            )
+            return _read_calibration_file(dataset_path, text_column, cal_samples)
 
     # Option 3: dummy fallback
-    logger.warning(
-        "No calibration data found, using dummy data. "
-        "Quality may be reduced."
-    )
-    return [
-        "The quick brown fox jumps over the lazy dog."
-    ] * cal_samples
+    logger.warning("No calibration data found, using dummy data. " "Quality may be reduced.")
+    return ["The quick brown fox jumps over the lazy dog."] * cal_samples
 
 
-def _read_calibration_file(
-    path: str, text_column: str, max_samples: int
-) -> list[str]:
+def _read_calibration_file(path: str, text_column: str, max_samples: int) -> list[str]:
     """Read calibration samples from a dataset file.
 
     Args:
@@ -182,8 +167,7 @@ def _read_calibration_file(
 
     if not samples:
         logger.warning(
-            "No samples found in %s (column=%s), "
-            "falling back to dummy data",
+            "No samples found in %s (column=%s), " "falling back to dummy data",
             path,
             text_column,
         )
@@ -215,10 +199,7 @@ def _quantize_awq(
     try:
         from awq import AutoAWQForCausalLM
     except ImportError:
-        raise ImportError(
-            "autoawq is not installed. "
-            "Install with: pip install 'pulsar-ai[awq]'"
-        )
+        raise ImportError("autoawq is not installed. " "Install with: pip install 'pulsar-ai[awq]'")
 
     from transformers import AutoTokenizer
 
@@ -247,9 +228,7 @@ def _quantize_awq(
 
     except Exception:
         if Path(output_path).exists():
-            logger.warning(
-                "Cleaning up failed export: %s", output_path
-            )
+            logger.warning("Cleaning up failed export: %s", output_path)
             shutil.rmtree(output_path)
         raise
 
@@ -263,9 +242,5 @@ def _dir_size_mb(path: str) -> float:
     Returns:
         Size in megabytes.
     """
-    total = sum(
-        f.stat().st_size
-        for f in Path(path).rglob("*")
-        if f.is_file()
-    )
+    total = sum(f.stat().st_size for f in Path(path).rglob("*") if f.is_file())
     return total / (1024 * 1024)

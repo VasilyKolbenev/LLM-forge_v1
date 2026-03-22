@@ -20,9 +20,7 @@ class RecipeRegistry:
             Defaults to ``configs/recipes/`` relative to project root.
     """
 
-    def __init__(
-        self, recipes_dir: Path | None = None
-    ) -> None:
+    def __init__(self, recipes_dir: Path | None = None) -> None:
         self._dir = Path(recipes_dir) if recipes_dir else _DEFAULT_RECIPES_DIR
 
     # ------------------------------------------------------------------
@@ -78,15 +76,11 @@ class RecipeRegistry:
         """
         path = self._dir / f"{name}.yaml"
         if not path.exists():
-            raise FileNotFoundError(
-                f"Recipe '{name}' not found in {self._dir}"
-            )
+            raise FileNotFoundError(f"Recipe '{name}' not found in {self._dir}")
         with open(path, encoding="utf-8") as fh:
             data = yaml.safe_load(fh)
         if not isinstance(data, dict):
-            raise ValueError(
-                f"Recipe '{name}' is not a valid YAML mapping"
-            )
+            raise ValueError(f"Recipe '{name}' is not a valid YAML mapping")
         data.pop("meta", None)
         return data
 
