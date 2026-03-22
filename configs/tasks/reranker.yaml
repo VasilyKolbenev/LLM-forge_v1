@@ -1,0 +1,7 @@
+# Reranker (Cross-Encoder) training task defaults
+
+task: reranker
+
+training:
+  epochs: 3
+  warmup_steps: 100

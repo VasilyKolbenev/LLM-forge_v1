@@ -1,0 +1,16 @@
+# Text classification training task defaults
+
+task: classification
+
+classification:
+  text_column: text
+  label_column: label
+
+training:
+  epochs: 3
+  learning_rate: 2e-5
+  batch_size: 16
+  max_seq_length: 512
+  warmup_steps: 100
+  logging_steps: 50
+  save_steps: 500
