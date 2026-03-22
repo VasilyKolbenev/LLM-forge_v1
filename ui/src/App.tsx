@@ -24,6 +24,7 @@ import { Experiments } from "@/pages/Experiments"
 import { Datasets } from "@/pages/Datasets"
 import { Compute } from "@/pages/Compute"
 import { Agent } from "@/pages/Agent"
+import { Traces } from "@/pages/Traces"
 import { Settings } from "@/pages/Settings"
 
 export default function App() {
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/compute" element={<Compute />} />
             <Route path="/prompts" element={<PromptLab />} />
             <Route path="/agent" element={<Agent />} />
+            <Route path="/traces" element={<Traces />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

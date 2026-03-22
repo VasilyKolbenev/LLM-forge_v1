@@ -92,6 +92,7 @@ def create_agent_app(config: dict) -> Any:
         answer: str
         session_id: str
         trace: list[dict[str, Any]] = []
+        trace_id: str = ""
 
     class ToolInfo(BaseModel):
         name: str
@@ -153,6 +154,7 @@ def create_agent_app(config: dict) -> Any:
                 answer=answer,
                 session_id=session_id,
                 trace=agent.trace,
+                trace_id=getattr(agent, "last_trace_id", ""),
             )
         except ConnectionError as e:
             raise HTTPException(

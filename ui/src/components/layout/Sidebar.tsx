@@ -28,6 +28,7 @@ const links = [
   { to: "/compute", icon: Server, label: "Compute" },
   { to: "/prompts", icon: FileText, label: "Prompt Lab" },
   { to: "/agent", icon: MessageSquare, label: "Agent Chat" },
+  { to: "/traces", icon: Activity, label: "Traces" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ]
 

@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from "react"
 import { Send, MessageSquare } from "lucide-react"
 import { EmptyState } from "@/components/ui/EmptyState"
+import { FeedbackButtons } from "@/components/FeedbackButtons"
 
 interface Message {
   role: "user" | "assistant"
   content: string
+  traceId?: string
 }
 
 export function Agent() {
@@ -38,7 +40,11 @@ export function Agent() {
       const data = await res.json()
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: data.message || "No response" },
+        {
+          role: "assistant",
+          content: data.message || data.answer || "No response",
+          traceId: data.trace_id || undefined,
+        },
       ])
     } catch (e) {
       setMessages((prev) => [
@@ -85,6 +91,9 @@ export function Agent() {
               }`}
             >
               <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+              {msg.role === "assistant" && msg.traceId && (
+                <FeedbackButtons traceId={msg.traceId} />
+              )}
             </div>
           </div>
         ))}
