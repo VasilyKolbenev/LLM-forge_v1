@@ -11,6 +11,7 @@ import {
   Workflow,
   FileText,
   GitBranch,
+  ClipboardCheck,
   LogOut,
   User,
 } from "lucide-react"
@@ -30,6 +31,7 @@ const links = [
   { to: "/prompts", icon: FileText, label: "Prompt Lab" },
   { to: "/agent", icon: MessageSquare, label: "Agent Chat" },
   { to: "/traces", icon: Activity, label: "Traces" },
+  { to: "/agent-eval", icon: ClipboardCheck, label: "Agent Eval" },
   { to: "/lifecycle", icon: GitBranch, label: "Lifecycle" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ]

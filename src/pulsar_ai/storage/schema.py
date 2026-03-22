@@ -8,7 +8,7 @@ Schema version is tracked in ``_schema_meta`` so future migrations
 can inspect the current version before applying ALTER TABLE / new tables.
 """
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 BOOTSTRAP_SQL = """
 -- ── Meta ────────────────────────────────────────────────────────────
@@ -222,4 +222,25 @@ CREATE TABLE IF NOT EXISTS trace_feedback (
 
 CREATE INDEX IF NOT EXISTS idx_trace_feedback_trace
     ON trace_feedback(trace_id);
+
+-- ── Agent Eval Reports ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS agent_eval_reports (
+    id              TEXT PRIMARY KEY,
+    suite_name      TEXT NOT NULL,
+    model_name      TEXT DEFAULT '',
+    timestamp       TEXT DEFAULT (datetime('now')),
+    success_rate    REAL DEFAULT 0,
+    avg_score       REAL DEFAULT 0,
+    avg_latency_ms  REAL DEFAULT 0,
+    total_tokens    INTEGER DEFAULT 0,
+    total_cost      REAL DEFAULT 0,
+    tools_accuracy  REAL DEFAULT 0,
+    results_json    TEXT DEFAULT '[]',
+    by_tag_json     TEXT DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_eval_reports_suite
+    ON agent_eval_reports(suite_name);
+CREATE INDEX IF NOT EXISTS idx_agent_eval_reports_model
+    ON agent_eval_reports(model_name);
 """

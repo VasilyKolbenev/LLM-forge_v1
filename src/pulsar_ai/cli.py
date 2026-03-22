@@ -733,6 +733,210 @@ def agent_serve(config_path: str, host: str, port: int) -> None:
     start_agent_server(config, host=host, port=port)
 
 
+# ── Agent Eval subgroup ──────────────────────────────────────────
+
+
+@main.group(name="agent-eval")
+def agent_eval_group() -> None:
+    """Agent evaluation commands."""
+
+
+@agent_eval_group.command(name="run")
+@click.argument("suite_path", type=click.Path(exists=True))
+@click.option("--agent-config", type=click.Path(exists=True), required=True, help="Agent config YAML.")
+@click.option(
+    "--scoring",
+    type=click.Choice(["judge", "exact", "contains"]),
+    default="exact",
+    help="Scoring strategy.",
+)
+def eval_run(suite_path: str, agent_config: str, scoring: str) -> None:
+    """Run an agent evaluation suite.
+
+    \b
+    Examples:
+        pulsar agent-eval run configs/eval-suites/basic-agent-suite.yaml --agent-config configs/agents/my-assistant.yaml
+    """
+    import yaml as _yaml
+
+    from pulsar_ai.evaluation.agent_eval import AgentEvaluator, load_suite_from_yaml
+    from pulsar_ai.evaluation.agent_eval_store import AgentEvalStore
+
+    suite = load_suite_from_yaml(suite_path)
+
+    with open(agent_config, "r", encoding="utf-8") as f:
+        config = _yaml.safe_load(f)
+
+    console.print(
+        Panel(
+            f"Suite: [bold]{suite.name}[/bold] ({len(suite.cases)} cases)\n"
+            f"Scoring: {scoring}",
+            title="Agent Eval",
+        )
+    )
+
+    evaluator = AgentEvaluator(config)
+    report = evaluator.run_suite(suite, scoring=scoring)
+
+    store = AgentEvalStore()
+    report_id = store.save_report(report)
+
+    table = Table(title=f"Eval Report: {report_id}")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+
+    table.add_row("Suite", report.suite_name)
+    table.add_row("Model", report.model_name)
+    table.add_row("Success Rate", f"{report.success_rate * 100:.1f}%")
+    table.add_row("Avg Score", f"{report.avg_score:.4f}")
+    table.add_row("Avg Latency", f"{report.avg_latency_ms:.0f}ms")
+    table.add_row("Total Tokens", str(report.total_tokens))
+    table.add_row("Total Cost", f"${report.total_cost:.4f}")
+    table.add_row("Tools Accuracy", f"{report.tools_accuracy * 100:.1f}%")
+    console.print(table)
+
+    # Per-case results
+    cases_table = Table(title="Case Results")
+    cases_table.add_column("Case ID", style="cyan")
+    cases_table.add_column("Pass", style="green")
+    cases_table.add_column("Score")
+    cases_table.add_column("Latency")
+    cases_table.add_column("Tools Match")
+    cases_table.add_column("Error", style="red")
+
+    for r in report.results:
+        pass_str = "[green]PASS[/green]" if r.success else "[red]FAIL[/red]"
+        tools_str = "[green]yes[/green]" if r.tools_match else "[red]no[/red]"
+        cases_table.add_row(
+            r.case_id,
+            pass_str,
+            f"{r.score:.2f}",
+            f"{r.latency_ms}ms",
+            tools_str,
+            r.error or "",
+        )
+
+    console.print(cases_table)
+    console.print(f"\n[dim]Report saved: {report_id}[/dim]")
+
+
+@agent_eval_group.command(name="list")
+def eval_list() -> None:
+    """List saved evaluation reports.
+
+    \b
+    Examples:
+        pulsar agent-eval list
+    """
+    from pulsar_ai.evaluation.agent_eval_store import AgentEvalStore
+
+    store = AgentEvalStore()
+    reports = store.list_reports(limit=50)
+
+    if not reports:
+        console.print("[dim]No evaluation reports found.[/dim]")
+        return
+
+    table = Table(title="Evaluation Reports")
+    table.add_column("ID", style="cyan")
+    table.add_column("Suite")
+    table.add_column("Model")
+    table.add_column("Timestamp")
+    table.add_column("Success Rate", style="green")
+    table.add_column("Avg Score")
+    table.add_column("Latency")
+
+    for r in reports:
+        success_pct = f"{r['success_rate'] * 100:.1f}%"
+        table.add_row(
+            r["id"],
+            r["suite_name"],
+            r["model_name"],
+            r["timestamp"],
+            success_pct,
+            f"{r['avg_score']:.4f}",
+            f"{r['avg_latency_ms']:.0f}ms",
+        )
+
+    console.print(table)
+
+
+@agent_eval_group.command(name="compare")
+@click.argument("report_a")
+@click.argument("report_b")
+def eval_compare(report_a: str, report_b: str) -> None:
+    """Compare two evaluation reports.
+
+    \b
+    Examples:
+        pulsar agent-eval compare abc123 def456
+    """
+    from pulsar_ai.evaluation.agent_eval_store import AgentEvalStore
+
+    store = AgentEvalStore()
+
+    try:
+        comparison = store.get_comparison(report_a, report_b)
+    except ValueError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+
+    table = Table(title="Report Comparison")
+    table.add_column("Metric", style="cyan")
+    table.add_column("A", style="yellow")
+    table.add_column("B", style="yellow")
+    table.add_column("Delta")
+
+    # Fetch both reports for absolute values
+    a = store.get_report(report_a)
+    b = store.get_report(report_b)
+
+    if a and b:
+        def _delta_str(delta: float, higher_is_better: bool = True) -> str:
+            if abs(delta) < 0.0001:
+                return "[dim]--[/dim]"
+            arrow = "[green]+[/green]" if (delta > 0) == higher_is_better else "[red]-[/red]"
+            return f"{arrow}{abs(delta):.4f}"
+
+        table.add_row(
+            "Model",
+            comparison["model_a"],
+            comparison["model_b"],
+            "",
+        )
+        table.add_row(
+            "Success Rate",
+            f"{a['success_rate'] * 100:.1f}%",
+            f"{b['success_rate'] * 100:.1f}%",
+            _delta_str(comparison["success_delta"]),
+        )
+        table.add_row(
+            "Avg Score",
+            f"{a['avg_score']:.4f}",
+            f"{b['avg_score']:.4f}",
+            _delta_str(comparison["score_delta"]),
+        )
+        table.add_row(
+            "Avg Latency",
+            f"{a['avg_latency_ms']:.0f}ms",
+            f"{b['avg_latency_ms']:.0f}ms",
+            _delta_str(comparison["latency_delta"], higher_is_better=False),
+        )
+        table.add_row(
+            "Total Cost",
+            f"${a['total_cost']:.4f}",
+            f"${b['total_cost']:.4f}",
+            _delta_str(comparison["cost_delta"], higher_is_better=False),
+        )
+
+    console.print(table)
+    winner = comparison["winner"]
+    if winner == "tie":
+        console.print("\n[dim]Result: Tie[/dim]")
+    else:
+        console.print(f"\n[bold green]Winner: {winner}[/bold green]")
+
+
 # РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚
 # Web UI command
 # РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚РІвЂќР‚

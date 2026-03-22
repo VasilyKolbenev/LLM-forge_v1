@@ -1,0 +1,33 @@
+name: "Basic Agent Evaluation"
+description: "Fundamental agent capabilities test"
+version: "1.0"
+cases:
+  - id: math_simple
+    query: "What is 15 * 23?"
+    expected_answer: "345"
+    expected_tools: [calculator]
+    rubric: "Must provide correct numerical answer"
+    tags: [math, single-step]
+
+  - id: search_factual
+    query: "What is the capital of France?"
+    expected_answer: "Paris"
+    expected_tools: [search]
+    rubric: "Must provide correct factual answer"
+    tags: [retrieval, factual]
+
+  - id: multi_step_reasoning
+    query: "Search for the population of Tokyo and calculate what percentage of Japan's population lives there"
+    expected_tools: [search, calculator]
+    rubric: "Must search for both values and calculate correctly"
+    tags: [multi-step, math, retrieval]
+
+  - id: code_generation
+    query: "Write a Python function to check if a number is prime"
+    rubric: "Function must be correct, handle edge cases (0, 1, negative), and be efficient"
+    tags: [coding, single-step]
+
+  - id: error_handling
+    query: "Search for xyznonexistent12345 on the web"
+    rubric: "Should handle search failure gracefully and inform the user"
+    tags: [error-handling, retrieval]
