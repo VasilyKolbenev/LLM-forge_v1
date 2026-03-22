@@ -67,7 +67,7 @@ def main(verbose: bool) -> None:
 @click.argument("overrides", nargs=-1)
 @click.option(
     "--task",
-    type=click.Choice(["sft", "dpo", "auto"]),
+    type=click.Choice(["sft", "dpo", "grpo", "embedding", "reranker", "classification", "auto"]),
     default="auto",
     help="Training task (default: auto-detect from config).",
 )
@@ -167,6 +167,40 @@ def train(
             from pulsar_ai.training.dpo import train_dpo
 
             results = train_dpo(config, progress=progress)
+        elif task == "grpo":
+            try:
+                from pulsar_ai.training.grpo import train_grpo
+            except ImportError:
+                console.print(
+                    "[red]GRPO requires TRL >= 0.14.[/red]"
+                    " Install: pip install 'trl>=0.14,<1.0'"
+                )
+                sys.exit(1)
+            results = train_grpo(config, progress=progress)
+        elif task == "embedding":
+            try:
+                from pulsar_ai.training.embedding import train_embedding
+            except ImportError:
+                console.print(
+                    "[red]Embedding requires sentence-transformers >= 3.0.[/red]"
+                    " Install: pip install 'pulsar-ai[embedding]'"
+                )
+                sys.exit(1)
+            results = train_embedding(config, progress=progress)
+        elif task == "reranker":
+            try:
+                from pulsar_ai.training.reranker import train_reranker
+            except ImportError:
+                console.print(
+                    "[red]Reranker requires sentence-transformers >= 3.0.[/red]"
+                    " Install: pip install 'pulsar-ai[embedding]'"
+                )
+                sys.exit(1)
+            results = train_reranker(config, progress=progress)
+        elif task == "classification":
+            from pulsar_ai.training.classification import train_classification
+
+            results = train_classification(config, progress=progress)
         else:
             console.print(f"[red]Unknown task: {task}[/red]")
             sys.exit(1)
@@ -273,7 +307,7 @@ def evaluate(
 @click.option(
     "--format",
     "export_format",
-    type=click.Choice(["gguf", "merged", "hub"]),
+    type=click.Choice(["gguf", "merged", "hub", "awq", "gptq"]),
     default="gguf",
     help="Export format.",
 )
@@ -340,6 +374,22 @@ def export(
         from pulsar_ai.export.hub import push_to_hub
 
         result = push_to_hub(config)
+    elif export_format == "awq":
+        try:
+            from pulsar_ai.export.awq import export_awq
+        except ImportError:
+            console.print("[red]AWQ requires autoawq.[/red] Install: pip install 'pulsar-ai[awq]'")
+            sys.exit(1)
+        result = export_awq(config)
+    elif export_format == "gptq":
+        try:
+            from pulsar_ai.export.gptq import export_gptq
+        except ImportError:
+            console.print(
+                "[red]GPTQ requires auto-gptq.[/red] Install: pip install 'pulsar-ai[gptq]'"
+            )
+            sys.exit(1)
+        result = export_gptq(config)
     else:
         console.print(f"[red]Unknown format: {export_format}[/red]")
         sys.exit(1)
@@ -357,7 +407,7 @@ def export(
 @click.option("--port", type=int, default=8080, help="Server port.")
 @click.option(
     "--backend",
-    type=click.Choice(["llamacpp", "vllm"]),
+    type=click.Choice(["llamacpp", "vllm", "sglang"]),
     default="llamacpp",
     help="Serving backend.",
 )
@@ -380,13 +430,22 @@ def serve(model: str, port: int, backend: str, host: str) -> None:
         from pulsar_ai.serving.vllm import start_server
 
         start_server(model_path=model, host=host, port=port)
+    elif backend == "sglang":
+        try:
+            from pulsar_ai.serving.sglang import start_server as start_sglang
+        except ImportError:
+            console.print(
+                "[red]SGLang not installed.[/red] Install: pip install 'pulsar-ai[sglang]'"
+            )
+            sys.exit(1)
+        start_sglang(model_path=model, host=host, port=port)
 
 
 @main.command()
 @click.argument("name")
 @click.option(
     "--task",
-    type=click.Choice(["sft", "dpo"]),
+    type=click.Choice(["sft", "dpo", "grpo", "embedding", "reranker", "classification"]),
     default="sft",
     help="Training task.",
 )

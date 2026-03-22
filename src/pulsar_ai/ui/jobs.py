@@ -150,6 +150,22 @@ def _run_training(
             from pulsar_ai.training.dpo import train_dpo
 
             results = train_dpo(config, progress=progress)
+        elif task == "grpo":
+            from pulsar_ai.training.grpo import train_grpo
+
+            results = train_grpo(config, progress=progress)
+        elif task == "embedding":
+            from pulsar_ai.training.embedding import train_embedding
+
+            results = train_embedding(config, progress=progress)
+        elif task == "reranker":
+            from pulsar_ai.training.reranker import train_reranker
+
+            results = train_reranker(config, progress=progress)
+        elif task == "classification":
+            from pulsar_ai.training.classification import train_classification
+
+            results = train_classification(config, progress=progress)
         else:
             raise ValueError(f"Unknown task: {task}")
 

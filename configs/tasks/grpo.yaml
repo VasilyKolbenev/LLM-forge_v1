@@ -1,0 +1,18 @@
+# GRPO task defaults
+task: grpo
+
+grpo:
+  num_generations: 4
+  max_completion_length: 256
+  beta: 0.1
+  reward_function: format_compliance
+  reward_kwargs: {}
+
+training:
+  epochs: 1
+  learning_rate: 5e-6
+  batch_size: 1
+  gradient_accumulation: 4
+  logging_steps: 10
+  save_steps: 200
+  optimizer: adamw_8bit
