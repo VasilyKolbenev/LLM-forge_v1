@@ -107,6 +107,7 @@ export const api = {
       body: JSON.stringify({ pipeline_config: pipelineConfig }),
     }),
   getWorkflowConfig: (id: string) => request<Record<string, unknown>>(`/workflows/${id}/config`),
+  getPipelineTrace: (workflowId: string) => request<Record<string, unknown>>(`/pipeline/trace/${workflowId}`),
   listWorkflowTemplates: () => request<Array<Record<string, unknown>>>("/workflows/templates"),
   createWorkflowFromTemplate: (templateId: string, data?: { name?: string }) =>
     request<Record<string, unknown>>(`/workflows/templates/${templateId}/create`, { method: "POST", body: JSON.stringify(data || {}) }),

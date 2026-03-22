@@ -59,18 +59,25 @@ function AgentPersonaNodeInner({ data, type: nodeType }: NodeProps) {
   }, [basePersona, custom])
 
   const avatarEmoji = custom?.avatarEmoji
-  const status = String(data.status || "idle") as "idle" | "running" | "done" | "error"
+  const replayStatus = data.replayStatus as
+    | { status: string; message?: string; progress?: number }
+    | undefined
+  const status = replayStatus
+    ? (String(replayStatus.status) as "idle" | "running" | "done" | "error")
+    : (String(data.status || "idle") as "idle" | "running" | "done" | "error")
   const config = (data.config ?? {}) as Record<string, unknown>
-  const progress = typeof data.progress === "number" ? (data.progress as number) : undefined
+  const progress = replayStatus?.progress
+    ?? (typeof data.progress === "number" ? (data.progress as number) : undefined)
 
   const configSummary = useMemo(() => buildConfigSummary(config), [config])
 
   const speechMessages = useMemo(() => {
+    if (replayStatus?.message) return [replayStatus.message]
     if (status === "running") return persona.workingMessages
     if (status === "done") return [persona.doneMessage]
     if (status === "error") return [persona.errorMessage]
     return [persona.idleMessage]
-  }, [status, persona])
+  }, [status, persona, replayStatus])
 
   const showBubble = status === "running" || status === "done" || status === "error"
 

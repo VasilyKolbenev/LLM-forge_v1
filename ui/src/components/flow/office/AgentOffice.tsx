@@ -25,6 +25,12 @@ function toIsometric(gridX: number, gridY: number): { x: number; y: number } {
   }
 }
 
+interface NodeReplayStatus {
+  status: "idle" | "running" | "done" | "error"
+  message?: string
+  progress?: number
+}
+
 interface AgentOfficeProps {
   nodes: Node[]
   selectedNodeId: string | null
@@ -33,6 +39,7 @@ interface AgentOfficeProps {
   customPersonas?: Record<string, CustomPersona>
   environment?: OfficeEnvironment
   onEnvironmentChange?: (env: OfficeEnvironment) => void
+  replayNodeStatuses?: Record<string, NodeReplayStatus>
 }
 
 function getStatusMessage(
@@ -56,6 +63,7 @@ export function AgentOffice({
   customPersonas = {},
   environment = "modern-office",
   onEnvironmentChange,
+  replayNodeStatuses,
 }: AgentOfficeProps) {
   const desks = useMemo(() => {
     return nodes.map((node, index) => {
@@ -70,7 +78,10 @@ export function AgentOffice({
       const avatarEmoji = custom?.avatarEmoji
 
       const data = (node.data ?? {}) as Record<string, unknown>
-      const status = String(data.status || "idle") as "idle" | "running" | "done" | "error"
+      const replayInfo = replayNodeStatuses?.[node.id]
+      const status = replayInfo
+        ? replayInfo.status
+        : (String(data.status || "idle") as "idle" | "running" | "done" | "error")
 
       const gridX = index % DESKS_PER_ROW
       const gridY = Math.floor(index / DESKS_PER_ROW)
@@ -85,7 +96,8 @@ export function AgentOffice({
             errorMessage: custom?.errorMessage ?? fullPersona.errorMessage,
           }
         : undefined
-      const message = messagePersona ? getStatusMessage(messagePersona, status) : undefined
+      const message = replayInfo?.message
+        ?? (messagePersona ? getStatusMessage(messagePersona, status) : undefined)
 
       return {
         id: node.id,
@@ -102,7 +114,7 @@ export function AgentOffice({
         avatarEmoji,
       }
     })
-  }, [nodes, selectedNodeId, customPersonas])
+  }, [nodes, selectedNodeId, customPersonas, replayNodeStatuses])
 
   const viewBox = useMemo(() => {
     if (desks.length === 0) {
