@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from pulsar_ai.openclaw.adapter import OpenClawAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +97,14 @@ class NemoClawManager:
     network policies, file restrictions, and inference routing.
 
     Args:
-        openclaw: OpenClawAdapter instance for agent sessions.
-        base_url: NemoClaw API base URL.
+        openclaw: Backend providing create_session / run / stop_session.
+            Accepts OpenClawAdapter (HTTP) or OpenClawRuntime (built-in).
+        base_url: NemoClaw API base URL (unused for built-in runtime).
     """
 
     def __init__(
         self,
-        openclaw: OpenClawAdapter,
+        openclaw: Any,
         base_url: str = "http://localhost:8200",
     ) -> None:
         self._openclaw = openclaw
@@ -255,7 +255,10 @@ class NemoClawManager:
         if not deployment:
             return {"status": "not_found"}
 
-        openclaw_health = self._openclaw.health_check()
+        health_fn = getattr(self._openclaw, "health_check", None)
+        if health_fn is None:
+            health_fn = getattr(self._openclaw, "health", lambda: {"status": "unknown"})
+        openclaw_health = health_fn()
         return {
             "deployment_id": deployment_id,
             "deployment_status": deployment.status,

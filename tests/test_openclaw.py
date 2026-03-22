@@ -1,10 +1,186 @@
-"""Tests for OpenClaw adapter, NemoClaw sandbox, and trace ingestion."""
+"""Tests for OpenClaw runtime, adapter, NemoClaw sandbox, and trace ingestion."""
 
 from unittest.mock import MagicMock, patch
 
 from pulsar_ai.openclaw.adapter import OpenClawAdapter, OpenClawSession
 from pulsar_ai.openclaw.nemoclaw import NemoClawManager, SandboxPolicy
+from pulsar_ai.openclaw.runtime import OpenClawRuntime, get_runtime
 from pulsar_ai.openclaw.trace_ingestion import OpenClawTraceIngester
+
+# ── OpenClaw Runtime Tests ────────────────────────────────────────
+
+
+class TestOpenClawRuntime:
+    """Tests for the built-in OpenClaw runtime."""
+
+    def setup_method(self) -> None:
+        self.runtime = OpenClawRuntime()
+
+    def test_runtime_create_session(self) -> None:
+        """Test creating a session returns a valid RuntimeSession."""
+        session = self.runtime.create_session(
+            {
+                "name": "test-agent",
+                "model": "llama3",
+                "tools": ["search"],
+                "system_prompt": "You are helpful.",
+            }
+        )
+
+        assert session.session_id
+        assert len(session.session_id) == 12
+        assert session.agent_name == "test-agent"
+        assert session.model == "llama3"
+        assert session.tools == ["search"]
+        assert session.status == "created"
+        assert session.system_prompt == "You are helpful."
+
+    def test_runtime_create_session_defaults(self) -> None:
+        """Test creating a session with minimal config uses defaults."""
+        session = self.runtime.create_session({})
+
+        assert session.agent_name == "default-agent"
+        assert session.model == ""
+        assert session.tools == []
+        assert session.system_prompt == "You are a helpful AI assistant."
+
+    @patch("pulsar_ai.agent.base.BaseAgent.from_config")
+    def test_runtime_run_session(self, mock_from_config: MagicMock) -> None:
+        """Test running a session delegates to BaseAgent."""
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = "Hello! I can help."
+        mock_agent.trace = [{"type": "answer", "content": "Hello! I can help."}]
+        mock_agent._total_tokens = 42
+        mock_from_config.return_value = mock_agent
+
+        session = self.runtime.create_session({"name": "test", "model": "llama3"})
+        result = self.runtime.run(session.session_id, "Hi there")
+
+        assert result["response"] == "Hello! I can help."
+        assert result["tokens"] == 42
+        assert result["session_id"] == session.session_id
+        assert result["latency_ms"] >= 0
+        assert isinstance(result["trace"], list)
+        assert isinstance(result["tools_used"], list)
+        mock_from_config.assert_called_once()
+
+    @patch("pulsar_ai.agent.base.BaseAgent.from_config")
+    def test_runtime_run_tracks_tools_used(self, mock_from_config: MagicMock) -> None:
+        """Test that tools_used is extracted from trace."""
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = "Result"
+        mock_agent.trace = [
+            {"type": "tool_call", "tool": "search"},
+            {"type": "observation", "tool": "search", "result": "found"},
+            {"type": "tool_call", "tool": "calc"},
+            {"type": "answer", "content": "Result"},
+        ]
+        mock_agent._total_tokens = 100
+        mock_from_config.return_value = mock_agent
+
+        session = self.runtime.create_session({"name": "test"})
+        result = self.runtime.run(session.session_id, "query")
+
+        assert result["tools_used"] == ["search", "calc"]
+
+    def test_runtime_run_session_not_found(self) -> None:
+        """Test running with invalid session raises ValueError."""
+        try:
+            self.runtime.run("nonexistent", "hello")
+            assert False, "Should have raised ValueError"
+        except ValueError as exc:
+            assert "not found" in str(exc).lower()
+
+    @patch("pulsar_ai.agent.base.BaseAgent.from_config")
+    def test_runtime_run_handles_agent_failure(
+        self,
+        mock_from_config: MagicMock,
+    ) -> None:
+        """Test that agent failures are handled gracefully."""
+        mock_from_config.side_effect = ConnectionError("No LLM")
+
+        session = self.runtime.create_session({"name": "test"})
+        result = self.runtime.run(session.session_id, "hello")
+
+        assert result["response"] == ""
+        assert "error" in result
+        assert session.status == "failed"
+
+    def test_runtime_list_sessions(self) -> None:
+        """Test listing sessions with optional status filter."""
+        self.runtime.create_session({"name": "a"})
+        s2 = self.runtime.create_session({"name": "b"})
+        s2.status = "running"
+
+        all_sessions = self.runtime.list_sessions()
+        assert len(all_sessions) == 2
+
+        running = self.runtime.list_sessions(status="running")
+        assert len(running) == 1
+        assert running[0].agent_name == "b"
+
+    def test_runtime_stop_session(self) -> None:
+        """Test stopping a session marks it completed."""
+        session = self.runtime.create_session({"name": "test"})
+        assert self.runtime.stop_session(session.session_id) is True
+        assert session.status == "completed"
+
+    def test_runtime_stop_session_not_found(self) -> None:
+        """Test stopping nonexistent session returns False."""
+        assert self.runtime.stop_session("nonexistent") is False
+
+    def test_runtime_get_session(self) -> None:
+        """Test getting a session by ID."""
+        session = self.runtime.create_session({"name": "test"})
+        found = self.runtime.get_session(session.session_id)
+        assert found is session
+
+    def test_runtime_get_session_not_found(self) -> None:
+        """Test getting nonexistent session returns None."""
+        assert self.runtime.get_session("nope") is None
+
+    def test_runtime_get_trace_empty(self) -> None:
+        """Test getting trace for new session returns empty list."""
+        session = self.runtime.create_session({"name": "test"})
+        assert self.runtime.get_trace(session.session_id) == []
+
+    def test_runtime_get_trace_not_found(self) -> None:
+        """Test getting trace for nonexistent session returns empty list."""
+        assert self.runtime.get_trace("nope") == []
+
+    def test_runtime_health(self) -> None:
+        """Test health check returns correct structure."""
+        health = self.runtime.health()
+        assert health["status"] == "ok"
+        assert health["runtime"] == "pulsar-builtin"
+        assert health["version"] == "0.1.0"
+        assert health["active_sessions"] == 0
+        assert health["total_sessions"] == 0
+
+    def test_runtime_health_counts_sessions(self) -> None:
+        """Test health reports correct session counts."""
+        s1 = self.runtime.create_session({"name": "a"})
+        s1.status = "running"
+        self.runtime.create_session({"name": "b"})
+
+        health = self.runtime.health()
+        assert health["active_sessions"] == 1
+        assert health["total_sessions"] == 2
+
+
+class TestGetRuntime:
+    """Tests for the global runtime singleton."""
+
+    def test_get_runtime_returns_singleton(self) -> None:
+        """Test that get_runtime returns the same instance."""
+        import pulsar_ai.openclaw.runtime as mod
+
+        mod._runtime = None
+        r1 = get_runtime()
+        r2 = get_runtime()
+        assert r1 is r2
+        mod._runtime = None  # cleanup
+
 
 # ── OpenClaw Adapter Tests ────────────────────────────────────────
 
@@ -14,7 +190,7 @@ class TestOpenClawAdapter:
 
     def setup_method(self) -> None:
         self.adapter = OpenClawAdapter(
-            base_url="http://localhost:8100",
+            base_url="http://localhost:8888/api/v1",
             api_key="test-key",
         )
 
@@ -46,7 +222,6 @@ class TestOpenClawAdapter:
     @patch("pulsar_ai.openclaw.adapter.requests.request")
     def test_run_session(self, mock_request: MagicMock) -> None:
         """Test running an agent in a session."""
-        # First create a session
         mock_resp_create = MagicMock()
         mock_resp_create.status_code = 200
         mock_resp_create.json.return_value = {
@@ -171,11 +346,9 @@ class TestOpenClawAdapter:
         """Test that run handles connection errors gracefully."""
         import requests as req_lib
 
-        # Create session locally (connection error on create falls back)
         mock_request.side_effect = req_lib.ConnectionError("refused")
         session = self.adapter.create_session({"name": "test"})
 
-        # Run also fails gracefully
         result = self.adapter.run(session.session_id, "hello")
         assert result["error"] == "OpenClaw runtime unavailable"
         assert result["response"] == ""
@@ -215,8 +388,59 @@ class TestSandboxPolicy:
         assert data["max_tokens"] == 8192
 
 
-class TestNemoClawManager:
-    """Tests for NemoClawManager with mocked OpenClaw."""
+class TestNemoClawManagerWithRuntime:
+    """Tests for NemoClawManager backed by the built-in runtime."""
+
+    def setup_method(self) -> None:
+        self.runtime = OpenClawRuntime()
+        self.manager = NemoClawManager(self.runtime)
+
+    def test_nemoclaw_deploy(self) -> None:
+        """Test deploying an agent with sandbox policy."""
+        policy = SandboxPolicy(allow_network=True, max_tokens=2048)
+        deployment = self.manager.deploy(
+            {"name": "test-agent", "model": "llama-3"},
+            policy,
+        )
+
+        assert deployment.session_id
+        assert deployment.status == "running"
+        assert deployment.policy.allow_network is True
+        assert deployment.policy.max_tokens == 2048
+
+    def test_nemoclaw_stop(self) -> None:
+        """Test stopping a deployment."""
+        policy = SandboxPolicy()
+        deployment = self.manager.deploy({"name": "test"}, policy)
+        success = self.manager.stop_deployment(deployment.deployment_id)
+        assert success is True
+
+    def test_nemoclaw_list_deployments(self) -> None:
+        """Test listing deployments."""
+        policy = SandboxPolicy()
+        self.manager.deploy({"name": "agent1"}, policy)
+        self.manager.deploy({"name": "agent2"}, policy)
+
+        deployments = self.manager.list_deployments()
+        assert len(deployments) == 2
+
+    def test_nemoclaw_policy_update(self) -> None:
+        """Test updating sandbox policy for a deployment."""
+        policy = SandboxPolicy()
+        deployment = self.manager.deploy({"name": "test"}, policy)
+
+        new_policy = SandboxPolicy(allow_network=True, max_tokens=8192)
+        success = self.manager.update_policy(deployment.deployment_id, new_policy)
+        assert success is True
+
+        updated = self.manager.get_deployment(deployment.deployment_id)
+        assert updated is not None
+        assert updated.policy.allow_network is True
+        assert updated.policy.max_tokens == 8192
+
+
+class TestNemoClawManagerWithAdapter:
+    """Tests for NemoClawManager with mocked OpenClaw adapter."""
 
     def setup_method(self) -> None:
         self.mock_adapter = MagicMock(spec=OpenClawAdapter)
@@ -276,29 +500,6 @@ class TestNemoClawManager:
         result = self.manager.run_sandboxed("nonexistent", "hello")
         assert "error" in result
 
-    def test_nemoclaw_policy_update(self) -> None:
-        """Test updating sandbox policy for a deployment."""
-        mock_session = OpenClawSession(
-            session_id="sess-upd",
-            agent_name="test",
-            model="llama",
-            status="created",
-            created_at="2026-01-01T00:00:00Z",
-        )
-        self.mock_adapter.create_session.return_value = mock_session
-
-        policy = SandboxPolicy()
-        deployment = self.manager.deploy({"name": "test"}, policy)
-
-        new_policy = SandboxPolicy(allow_network=True, max_tokens=8192)
-        success = self.manager.update_policy(deployment.deployment_id, new_policy)
-        assert success is True
-
-        updated = self.manager.get_deployment(deployment.deployment_id)
-        assert updated is not None
-        assert updated.policy.allow_network is True
-        assert updated.policy.max_tokens == 8192
-
     def test_nemoclaw_stop(self) -> None:
         """Test stopping a deployment."""
         mock_session = OpenClawSession(
@@ -315,24 +516,6 @@ class TestNemoClawManager:
         deployment = self.manager.deploy({"name": "test"}, policy)
         success = self.manager.stop_deployment(deployment.deployment_id)
         assert success is True
-
-    def test_nemoclaw_list_deployments(self) -> None:
-        """Test listing deployments."""
-        mock_session = OpenClawSession(
-            session_id="sess-list",
-            agent_name="test",
-            model="llama",
-            status="created",
-            created_at="2026-01-01T00:00:00Z",
-        )
-        self.mock_adapter.create_session.return_value = mock_session
-
-        policy = SandboxPolicy()
-        self.manager.deploy({"name": "agent1"}, policy)
-        self.manager.deploy({"name": "agent2"}, policy)
-
-        deployments = self.manager.list_deployments()
-        assert len(deployments) == 2
 
     def test_nemoclaw_health(self) -> None:
         """Test getting deployment health."""
@@ -358,111 +541,102 @@ class TestNemoClawManager:
 
 
 class TestOpenClawAPI:
-    """Tests for OpenClaw API endpoints with FastAPI TestClient."""
+    """Tests for OpenClaw API endpoints via built-in runtime."""
 
     def setup_method(self) -> None:
-        # Reset module-level state before each test
         from pulsar_ai.ui.routes import openclaw as routes_mod
 
-        routes_mod._adapter = None
         routes_mod._manager = None
+        routes_mod._ingester = None
+        # Reset global runtime so each test starts fresh
+        import pulsar_ai.openclaw.runtime as rt_mod
 
-    @patch("pulsar_ai.openclaw.adapter.requests.request")
-    def test_api_health(self, mock_request: MagicMock) -> None:
-        """Test GET /openclaw/health endpoint."""
+        rt_mod._runtime = OpenClawRuntime()
+
+    def _make_client(self):  # noqa: ANN202
+        from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
         from pulsar_ai.ui.routes.openclaw import router
 
-        from fastapi import FastAPI
-
         app = FastAPI()
         app.include_router(router)
-        client = TestClient(app)
+        return TestClient(app)
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"version": "1.0.0"}
-        mock_request.return_value = mock_resp
-
+    def test_api_health_returns_ok(self) -> None:
+        """Test GET /openclaw/health returns ok status."""
+        client = self._make_client()
         response = client.get("/openclaw/health")
         assert response.status_code == 200
-        assert response.json()["status"] == "healthy"
-
-    @patch("pulsar_ai.openclaw.adapter.requests.request")
-    def test_api_create_session(self, mock_request: MagicMock) -> None:
-        """Test POST /openclaw/sessions endpoint."""
-        from fastapi.testclient import TestClient
-
-        from pulsar_ai.ui.routes.openclaw import router
-
-        from fastapi import FastAPI
-
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "session_id": "api-sess-1",
-            "status": "created",
-        }
-        mock_request.return_value = mock_resp
-
-        response = client.post(
-            "/openclaw/sessions",
-            json={"name": "test-agent", "model": "llama-3"},
-        )
-        assert response.status_code == 200
         data = response.json()
-        assert data["session_id"] == "api-sess-1"
-        assert data["agent_name"] == "test-agent"
+        assert data["status"] == "ok"
+        assert data["runtime"] == "pulsar-builtin"
 
-    @patch("pulsar_ai.openclaw.adapter.requests.request")
-    def test_api_list_sessions(self, mock_request: MagicMock) -> None:
-        """Test GET /openclaw/sessions endpoint."""
-        from fastapi.testclient import TestClient
+    def test_api_create_and_run_session(self) -> None:
+        """Test creating and running a session via API."""
+        client = self._make_client()
 
-        from pulsar_ai.ui.routes.openclaw import router
+        # Create session
+        resp = client.post(
+            "/openclaw/sessions",
+            json={"name": "api-agent", "model": "llama3"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["agent_name"] == "api-agent"
+        session_id = data["session_id"]
 
-        from fastapi import FastAPI
+        # Session should be retrievable
+        resp = client.get(f"/openclaw/sessions/{session_id}")
+        assert resp.status_code == 200
+        assert resp.json()["session_id"] == session_id
 
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+    def test_api_list_sessions(self) -> None:
+        """Test GET /openclaw/sessions returns session list."""
+        client = self._make_client()
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"sessions": []}
-        mock_request.return_value = mock_resp
+        client.post("/openclaw/sessions", json={"name": "a"})
+        client.post("/openclaw/sessions", json={"name": "b"})
 
-        response = client.get("/openclaw/sessions")
-        assert response.status_code == 200
-        assert "sessions" in response.json()
+        resp = client.get("/openclaw/sessions")
+        assert resp.status_code == 200
+        sessions = resp.json()["sessions"]
+        assert len(sessions) == 2
 
-    @patch("pulsar_ai.openclaw.adapter.requests.request")
-    def test_api_create_deployment(self, mock_request: MagicMock) -> None:
-        """Test POST /openclaw/deployments endpoint."""
-        from fastapi.testclient import TestClient
+    def test_api_stop_session(self) -> None:
+        """Test DELETE /openclaw/sessions/{id} stops session."""
+        client = self._make_client()
 
-        from pulsar_ai.ui.routes.openclaw import router
+        resp = client.post("/openclaw/sessions", json={"name": "stop-me"})
+        session_id = resp.json()["session_id"]
 
-        from fastapi import FastAPI
+        resp = client.delete(f"/openclaw/sessions/{session_id}")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "stopped"
 
-        app = FastAPI()
-        app.include_router(router)
-        client = TestClient(app)
+    def test_api_session_not_found(self) -> None:
+        """Test 404 for nonexistent session."""
+        client = self._make_client()
+        resp = client.get("/openclaw/sessions/nonexistent")
+        assert resp.status_code == 404
 
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "session_id": "dep-sess-1",
-            "status": "created",
-        }
-        mock_request.return_value = mock_resp
+    def test_api_get_trace(self) -> None:
+        """Test GET /openclaw/sessions/{id}/trace returns trace."""
+        client = self._make_client()
 
-        response = client.post(
+        resp = client.post("/openclaw/sessions", json={"name": "trace-test"})
+        session_id = resp.json()["session_id"]
+
+        resp = client.get(f"/openclaw/sessions/{session_id}/trace")
+        assert resp.status_code == 200
+        assert resp.json()["session_id"] == session_id
+        assert resp.json()["trace"] == []
+
+    def test_api_create_deployment(self) -> None:
+        """Test POST /openclaw/deployments creates a deployment."""
+        client = self._make_client()
+
+        resp = client.post(
             "/openclaw/deployments",
             json={
                 "name": "sandbox-agent",
@@ -473,8 +647,8 @@ class TestOpenClawAPI:
                 },
             },
         )
-        assert response.status_code == 200
-        data = response.json()
+        assert resp.status_code == 200
+        data = resp.json()
         assert "deployment_id" in data
         assert data["status"] == "running"
         assert data["policy"]["allow_network"] is True
