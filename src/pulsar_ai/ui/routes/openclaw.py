@@ -1,13 +1,14 @@
 """API routes for OpenClaw runtime and NemoClaw sandbox management."""
 
 import logging
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from pulsar_ai.openclaw.adapter import OpenClawAdapter
 from pulsar_ai.openclaw.nemoclaw import NemoClawManager, SandboxPolicy
+from pulsar_ai.openclaw.runtime import get_runtime
 from pulsar_ai.openclaw.trace_ingestion import OpenClawTraceIngester
 from pulsar_ai.storage.trace_store import TraceStore
 
@@ -17,32 +18,19 @@ router = APIRouter(prefix="/openclaw", tags=["openclaw"])
 
 # ── In-memory state ───────────────────────────────────────────────
 
-_adapter: OpenClawAdapter | None = None
 _manager: NemoClawManager | None = None
 _ingester: OpenClawTraceIngester | None = None
-
-
-def _get_adapter() -> OpenClawAdapter:
-    """Get or create the global OpenClaw adapter.
-
-    Returns:
-        OpenClawAdapter instance.
-    """
-    global _adapter
-    if _adapter is None:
-        _adapter = OpenClawAdapter()
-    return _adapter
 
 
 def _get_manager() -> NemoClawManager:
     """Get or create the global NemoClaw manager.
 
     Returns:
-        NemoClawManager instance.
+        NemoClawManager instance backed by the built-in runtime.
     """
-    global _manager
+    global _manager  # noqa: PLW0603
     if _manager is None:
-        _manager = NemoClawManager(_get_adapter())
+        _manager = NemoClawManager(get_runtime())
     return _manager
 
 
@@ -50,11 +38,11 @@ def _get_ingester() -> OpenClawTraceIngester:
     """Get or create the global trace ingester.
 
     Returns:
-        OpenClawTraceIngester instance.
+        OpenClawTraceIngester instance backed by the built-in runtime.
     """
-    global _ingester
+    global _ingester  # noqa: PLW0603
     if _ingester is None:
-        _ingester = OpenClawTraceIngester(_get_adapter(), TraceStore())
+        _ingester = OpenClawTraceIngester(get_runtime(), TraceStore())
     return _ingester
 
 
@@ -110,67 +98,67 @@ class PolicyUpdateRequest(BaseModel):
 @router.get("/health")
 def openclaw_health() -> dict[str, Any]:
     """Check OpenClaw runtime health."""
-    adapter = _get_adapter()
-    return adapter.health_check()
+    runtime = get_runtime()
+    return runtime.health()
 
 
 @router.get("/sessions")
 def list_sessions(status: str | None = None) -> dict[str, Any]:
     """List all OpenClaw sessions."""
-    adapter = _get_adapter()
-    sessions = adapter.list_sessions(status=status)
-    return {"sessions": [s.to_dict() for s in sessions]}
+    runtime = get_runtime()
+    sessions = runtime.list_sessions(status=status)
+    return {"sessions": [asdict(s) for s in sessions]}
 
 
 @router.post("/sessions")
 def create_session(body: SessionCreateRequest) -> dict[str, Any]:
     """Create a new OpenClaw agent session."""
-    adapter = _get_adapter()
+    runtime = get_runtime()
     config = {
         "name": body.name,
         "model": body.model,
         "tools": body.tools,
         "system_prompt": body.system_prompt,
     }
-    session = adapter.create_session(config)
-    return session.to_dict()
+    session = runtime.create_session(config)
+    return asdict(session)
 
 
 @router.get("/sessions/{session_id}")
 def get_session(session_id: str) -> dict[str, Any]:
     """Get session detail."""
-    adapter = _get_adapter()
-    session = adapter.get_session(session_id)
+    runtime = get_runtime()
+    session = runtime.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return session.to_dict()
+    return asdict(session)
 
 
 @router.post("/sessions/{session_id}/run")
 def run_session(session_id: str, body: SessionRunRequest) -> dict[str, Any]:
     """Run agent in a session."""
-    adapter = _get_adapter()
-    session = adapter.get_session(session_id)
+    runtime = get_runtime()
+    session = runtime.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return adapter.run(session_id, body.input)
+    return runtime.run(session_id, body.input)
 
 
 @router.delete("/sessions/{session_id}")
 def stop_session(session_id: str) -> dict[str, Any]:
     """Stop and cleanup a session."""
-    adapter = _get_adapter()
-    success = adapter.stop_session(session_id)
+    runtime = get_runtime()
+    success = runtime.stop_session(session_id)
     if not success:
-        raise HTTPException(status_code=500, detail="Failed to stop session")
+        raise HTTPException(status_code=404, detail="Session not found")
     return {"status": "stopped", "session_id": session_id}
 
 
 @router.get("/sessions/{session_id}/trace")
 def get_session_trace(session_id: str) -> dict[str, Any]:
     """Get execution trace from a session."""
-    adapter = _get_adapter()
-    trace = adapter.get_trace(session_id)
+    runtime = get_runtime()
+    trace = runtime.get_trace(session_id)
     return {"session_id": session_id, "trace": trace}
 
 

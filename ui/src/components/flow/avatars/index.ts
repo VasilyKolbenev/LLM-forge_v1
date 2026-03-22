@@ -1,0 +1,6 @@
+export { ScientistAvatar } from "./ScientistAvatar"
+export { EngineerAvatar } from "./EngineerAvatar"
+export { DevopsAvatar } from "./DevopsAvatar"
+export { ArchitectAvatar } from "./ArchitectAvatar"
+export { SecurityAvatar } from "./SecurityAvatar"
+export { ObserverAvatar } from "./ObserverAvatar"

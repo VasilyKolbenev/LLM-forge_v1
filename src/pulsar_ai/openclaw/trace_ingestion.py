@@ -7,7 +7,6 @@ and persists them for feedback, dataset building, and analysis.
 import logging
 from typing import Any
 
-from pulsar_ai.openclaw.adapter import OpenClawAdapter, OpenClawSession
 from pulsar_ai.storage.trace_store import TraceStore
 
 logger = logging.getLogger(__name__)
@@ -17,11 +16,12 @@ class OpenClawTraceIngester:
     """Ingests execution traces from OpenClaw sessions into Pulsar AI TraceStore.
 
     Args:
-        adapter: OpenClawAdapter instance for fetching session data.
+        adapter: Backend providing get_session / get_trace / list_sessions.
+            Accepts OpenClawAdapter (HTTP) or OpenClawRuntime (built-in).
         trace_store: TraceStore instance for persisting traces.
     """
 
-    def __init__(self, adapter: OpenClawAdapter, trace_store: TraceStore) -> None:
+    def __init__(self, adapter: Any, trace_store: TraceStore) -> None:
         self._adapter = adapter
         self._store = trace_store
 
@@ -98,7 +98,7 @@ class OpenClawTraceIngester:
     def _convert_trace(
         self,
         openclaw_trace: dict[str, Any],
-        session: OpenClawSession,
+        session: Any,
     ) -> dict[str, Any]:
         """Convert OpenClaw trace format to Pulsar AI trace format.
 

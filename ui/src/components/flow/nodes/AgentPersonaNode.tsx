@@ -4,6 +4,23 @@ import { motion } from "framer-motion"
 import { PERSONAS } from "../personas"
 import { SpeechBubble } from "../SpeechBubble"
 import type { CustomPersona } from "../PersonaEditor"
+import {
+  ScientistAvatar,
+  EngineerAvatar,
+  DevopsAvatar,
+  ArchitectAvatar,
+  SecurityAvatar,
+  ObserverAvatar,
+} from "../avatars"
+
+const AVATAR_MAP: Record<string, React.FC<{ size?: number; color?: string }>> = {
+  scientist: ScientistAvatar,
+  engineer: EngineerAvatar,
+  devops: DevopsAvatar,
+  architect: ArchitectAvatar,
+  security: SecurityAvatar,
+  observer: ObserverAvatar,
+}
 
 function buildConfigSummary(config: Record<string, unknown>): string {
   const parts: string[] = []
@@ -112,10 +129,9 @@ function AgentPersonaNodeInner({ data, type: nodeType }: NodeProps) {
         >
           {/* Avatar */}
           <motion.div
-            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+            className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden"
             style={{
-              backgroundColor: `${persona.color}25`,
-              color: persona.color,
+              backgroundColor: `${persona.color}15`,
               border: `2px solid ${persona.color}50`,
             }}
             animate={
@@ -133,7 +149,12 @@ function AgentPersonaNodeInner({ data, type: nodeType }: NodeProps) {
                   : undefined
             }
           >
-            {avatarEmoji || persona.name.charAt(0)}
+            {(() => {
+              const AvatarComponent = AVATAR_MAP[persona.category]
+              return AvatarComponent
+                ? <AvatarComponent size={36} color={persona.color} />
+                : <ObserverAvatar size={36} color={persona.color} />
+            })()}
           </motion.div>
 
           <div className="flex-1 min-w-0">

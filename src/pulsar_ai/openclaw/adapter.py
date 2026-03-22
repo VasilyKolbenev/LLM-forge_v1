@@ -57,7 +57,7 @@ class OpenClawAdapter:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:8100",
+        base_url: str = "http://localhost:8888/api/v1",
         api_key: str = "",
     ) -> None:
         self._base_url = base_url.rstrip("/")
