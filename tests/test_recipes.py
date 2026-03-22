@@ -3,7 +3,8 @@
 from pathlib import Path
 
 import pytest
-import yaml
+
+yaml = pytest.importorskip("yaml")
 
 from pulsar_ai.recipes import RecipeRegistry
 

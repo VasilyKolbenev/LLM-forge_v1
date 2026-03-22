@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-import yaml
+
+yaml = pytest.importorskip("yaml")
 
 from pulsar_ai.validation import validate_config
 from pulsar_ai.export.awq import _get_awq_config

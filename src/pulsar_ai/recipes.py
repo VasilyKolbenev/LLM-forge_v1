@@ -4,9 +4,22 @@ import logging
 from pathlib import Path
 from typing import Any, Optional
 
-import yaml
-
 logger = logging.getLogger(__name__)
+
+
+def _load_yaml(path: Path) -> dict:
+    """Load a YAML file safely.
+
+    Args:
+        path: Path to YAML file.
+
+    Returns:
+        Parsed dict.
+    """
+    import yaml
+
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 _DEFAULT_RECIPES_DIR = _PROJECT_ROOT / "configs" / "recipes"
@@ -77,8 +90,7 @@ class RecipeRegistry:
         path = self._dir / f"{name}.yaml"
         if not path.exists():
             raise FileNotFoundError(f"Recipe '{name}' not found in {self._dir}")
-        with open(path, encoding="utf-8") as fh:
-            data = yaml.safe_load(fh)
+        data = _load_yaml(path)
         if not isinstance(data, dict):
             raise ValueError(f"Recipe '{name}' is not a valid YAML mapping")
         data.pop("meta", None)
@@ -98,9 +110,8 @@ class RecipeRegistry:
             Meta dict or *None* if the file is malformed / has no meta.
         """
         try:
-            with open(path, encoding="utf-8") as fh:
-                data = yaml.safe_load(fh)
-        except yaml.YAMLError:
+            data = _load_yaml(path)
+        except Exception:
             logger.warning("Skipping malformed YAML: %s", path)
             return None
 
