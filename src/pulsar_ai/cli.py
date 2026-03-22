@@ -1756,3 +1756,101 @@ def _show_eval_results(results: dict) -> None:
                 cls_table.add_row(cls_name, f"{acc:.2%}", str(count))
 
         console.print(cls_table)
+
+
+# ── OpenClaw commands ────────────────────────────────────────────
+
+
+@main.group()
+def openclaw() -> None:
+    """OpenClaw runtime management."""
+
+
+@openclaw.command()
+def health() -> None:
+    """Check OpenClaw runtime health."""
+    from pulsar_ai.openclaw.adapter import OpenClawAdapter
+
+    adapter = OpenClawAdapter()
+    result = adapter.health_check()
+    status = result.get("status", "unknown")
+    color = "green" if status == "healthy" else "red"
+    console.print(f"OpenClaw status: [{color}]{status}[/{color}]")
+    if result.get("error"):
+        console.print(f"  Error: {result['error']}")
+
+
+@openclaw.command(name="sessions")
+def list_sessions() -> None:
+    """List active OpenClaw sessions."""
+    from pulsar_ai.openclaw.adapter import OpenClawAdapter
+
+    adapter = OpenClawAdapter()
+    sessions = adapter.list_sessions()
+
+    if not sessions:
+        console.print("[dim]No active sessions[/dim]")
+        return
+
+    table = Table(title="OpenClaw Sessions")
+    table.add_column("Session ID", style="cyan")
+    table.add_column("Agent", style="green")
+    table.add_column("Model", style="yellow")
+    table.add_column("Status", style="magenta")
+    table.add_column("Created", style="dim")
+
+    for s in sessions:
+        table.add_row(
+            s.session_id,
+            s.agent_name,
+            s.model,
+            s.status,
+            s.created_at,
+        )
+    console.print(table)
+
+
+@openclaw.command(name="deploy")
+@click.argument("agent_config", type=click.Path(exists=True))
+@click.option("--sandbox/--no-sandbox", default=True, help="Enable NemoClaw sandbox.")
+def deploy(agent_config: str, sandbox: bool) -> None:
+    """Deploy agent via OpenClaw (with optional NemoClaw sandbox).
+
+    \b
+    Examples:
+        pulsar openclaw deploy configs/agents/my-agent.yaml
+        pulsar openclaw deploy configs/agents/my-agent.yaml --no-sandbox
+    """
+    import yaml
+
+    from pulsar_ai.openclaw.adapter import OpenClawAdapter
+    from pulsar_ai.openclaw.nemoclaw import NemoClawManager, SandboxPolicy
+
+    with open(agent_config, encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    adapter = OpenClawAdapter()
+
+    if sandbox:
+        manager = NemoClawManager(adapter)
+        policy = SandboxPolicy()
+        deployment = manager.deploy(config.get("agent", config), policy)
+        console.print(
+            Panel(
+                f"[green]Deployed:[/green] {deployment.deployment_id}\n"
+                f"Session: {deployment.session_id}\n"
+                f"Sandbox: enabled\n"
+                f"Status: {deployment.status}",
+                title="NemoClaw Deployment",
+            )
+        )
+    else:
+        session = adapter.create_session(config.get("agent", config))
+        console.print(
+            Panel(
+                f"[green]Created:[/green] {session.session_id}\n"
+                f"Agent: {session.agent_name}\n"
+                f"Status: {session.status}",
+                title="OpenClaw Session",
+            )
+        )
