@@ -69,17 +69,25 @@ def _run_reranker_training(
     if errors:
         raise ValueError(f"Reranker dataset validation failed: {'; '.join(errors)}")
 
-    # Prepare training samples as list of (sentence_pair, score)
-    train_samples = []
-    for _, row in df.iterrows():
-        train_samples.append(
-            ([str(row["query"]), str(row["document"])], float(row["relevance_score"]))
-        )
+    # Prepare training samples wrapped in InputExample + DataLoader
+    from sentence_transformers import InputExample
+    from torch.utils.data import DataLoader
 
-    logger.info("Training on %d samples", len(train_samples))
+    examples = [
+        InputExample(
+            texts=[str(row["query"]), str(row["document"])],
+            label=float(row["relevance_score"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+    batch_size = training_config.get("batch_size", 16)
+    train_dataloader = DataLoader(examples, shuffle=True, batch_size=batch_size)
+
+    logger.info("Training on %d samples", len(examples))
 
     model.fit(
-        train_dataloader=train_samples,
+        train_dataloader=train_dataloader,
         epochs=training_config.get("epochs", 3),
         warmup_steps=training_config.get("warmup_steps", 100),
         output_path=output_dir,
@@ -90,7 +98,7 @@ def _run_reranker_training(
     return {
         "output_dir": output_dir,
         "artifact_type": "full_model",
-        "num_samples": len(train_samples),
+        "num_samples": len(examples),
     }
 
 

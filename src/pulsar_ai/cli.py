@@ -198,8 +198,14 @@ def train(
                 sys.exit(1)
             results = train_reranker(config, progress=progress)
         elif task == "classification":
-            from pulsar_ai.training.classification import train_classification
-
+            try:
+                from pulsar_ai.training.classification import train_classification
+            except ImportError:
+                console.print(
+                    "[red]Classification requires scikit-learn.[/red]"
+                    " Install: pip install 'pulsar-ai[classification]'"
+                )
+                sys.exit(1)
             results = train_classification(config, progress=progress)
         else:
             console.print(f"[red]Unknown task: {task}[/red]")
@@ -1336,10 +1342,59 @@ def recipes_run(name: str, overrides: tuple[str, ...]) -> None:
         )
     )
 
-    from pulsar_ai.dispatch import dispatch_task
-
     try:
-        result = dispatch_task(task, config)
+        if task == "sft":
+            from pulsar_ai.training.sft import train_sft
+
+            result = train_sft(config)
+        elif task == "dpo":
+            from pulsar_ai.training.dpo import train_dpo
+
+            result = train_dpo(config)
+        elif task == "grpo":
+            try:
+                from pulsar_ai.training.grpo import train_grpo
+            except ImportError:
+                console.print(
+                    "[red]GRPO requires TRL >= 0.14.[/red]"
+                    " Install: pip install 'trl>=0.14,<1.0'"
+                )
+                sys.exit(1)
+            result = train_grpo(config)
+        elif task == "embedding":
+            try:
+                from pulsar_ai.training.embedding import train_embedding
+            except ImportError:
+                console.print(
+                    "[red]Embedding requires sentence-transformers >= 3.0.[/red]"
+                    " Install: pip install 'pulsar-ai[embedding]'"
+                )
+                sys.exit(1)
+            result = train_embedding(config)
+        elif task == "reranker":
+            try:
+                from pulsar_ai.training.reranker import train_reranker
+            except ImportError:
+                console.print(
+                    "[red]Reranker requires sentence-transformers >= 3.0.[/red]"
+                    " Install: pip install 'pulsar-ai[embedding]'"
+                )
+                sys.exit(1)
+            result = train_reranker(config)
+        elif task == "classification":
+            try:
+                from pulsar_ai.training.classification import train_classification
+            except ImportError:
+                console.print(
+                    "[red]Classification requires scikit-learn.[/red]"
+                    " Install: pip install 'pulsar-ai[classification]'"
+                )
+                sys.exit(1)
+            result = train_classification(config)
+        else:
+            console.print(f"[red]Unknown task: {task}[/red]")
+            sys.exit(1)
+
         console.print("[green]Recipe completed successfully![/green]")
         if isinstance(result, dict):
             for k, v in result.items():

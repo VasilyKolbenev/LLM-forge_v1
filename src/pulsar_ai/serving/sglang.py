@@ -54,9 +54,14 @@ def start_server(
     try:
         _run_via_python_api(args)
     except ImportError:
-        raise ImportError(
-            "sglang is not installed. " "Install with: pip install 'pulsar-ai[sglang]'"
-        )
+        logger.info("SGLang Python API not available, trying subprocess fallback...")
+        try:
+            _run_via_subprocess(args)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            raise ImportError(
+                "sglang is not installed. "
+                "Install with: pip install 'pulsar-ai[sglang]'"
+            )
 
 
 def _build_server_args(

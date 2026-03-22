@@ -294,7 +294,7 @@ def _run_grpo_trl(
 
     trainer = GRPOTrainer(
         model=model,
-        reward_funcs=reward_fn,
+        reward_funcs=[reward_fn],
         args=grpo_args,
         train_dataset=dataset,
         processing_class=tokenizer,
@@ -309,13 +309,14 @@ def _run_grpo_trl(
     tokenizer.save_pretrained(adapter_dir)
     logger.info("GRPO model saved to %s", adapter_dir)
 
-    vram_peak = torch.cuda.max_memory_allocated() / (1024**3)
+    vram_peak = 0.0
+    if torch.cuda.is_available():
+        vram_peak = torch.cuda.max_memory_allocated() / (1024**3)
 
-    reward_scores = getattr(trainer, "_reward_scores", [])
-    import statistics
-
-    reward_mean = statistics.mean(reward_scores) if reward_scores else 0.0
-    reward_std = statistics.stdev(reward_scores) if len(reward_scores) > 1 else 0.0
+    # TODO(#grpo-metrics): extract reward_mean/std from training logs;
+    # GRPOTrainer does not expose a _reward_scores attribute.
+    reward_mean = 0.0
+    reward_std = 0.0
 
     return {
         "training_loss": stats.training_loss,

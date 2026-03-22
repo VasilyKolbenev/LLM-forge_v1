@@ -105,8 +105,14 @@ def _load_calibration_data(config: dict) -> list[str]:
     text_column = awq_section.get("text_column", "text")
 
     # Option 1: explicit file path
-    if cal_path not in ("auto", None) and Path(cal_path).exists():
-        return _read_calibration_file(cal_path, text_column, cal_samples)
+    if cal_path not in ("auto", None):
+        if Path(cal_path).exists():
+            return _read_calibration_file(cal_path, text_column, cal_samples)
+        raise FileNotFoundError(
+            f"Calibration data file not found: {cal_path}. "
+            f"Set calibration_data to 'auto' to use training dataset, "
+            f"or provide a valid file path."
+        )
 
     # Option 2: reuse training dataset
     if cal_path == "auto":
