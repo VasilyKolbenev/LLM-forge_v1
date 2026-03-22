@@ -42,6 +42,7 @@ from pulsar_ai.ui.routes.site_chat import router as site_chat_router
 from pulsar_ai.ui.routes.recipes import router as recipes_router
 from pulsar_ai.ui.routes.traces import router as traces_router
 from pulsar_ai.ui.routes.lineage import router as lineage_router
+from pulsar_ai.ui.routes.agent_eval import router as agent_eval_router
 from pulsar_ai.ui.prometheus import router as prometheus_router
 
 _env_file = os.environ.get("PULSAR_ENV_FILE", "").strip()
@@ -162,6 +163,7 @@ def create_app() -> FastAPI:
     app.include_router(recipes_router, prefix="/api/v1")
     app.include_router(traces_router, prefix="/api/v1")
     app.include_router(lineage_router, prefix="/api/v1")
+    app.include_router(agent_eval_router, prefix="/api/v1")
 
     @app.get("/api/v1/health")
     async def health() -> dict:

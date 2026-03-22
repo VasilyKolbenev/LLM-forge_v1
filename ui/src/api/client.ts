@@ -159,6 +159,25 @@ export const api = {
       `/lineage/timeline${limit ? `?limit=${limit}` : ""}`,
     ),
 
+  // Agent Eval
+  getAgentEvalReports: (modelName?: string) =>
+    request<{ reports: Array<Record<string, unknown>>; total: number }>(
+      `/agent-eval/reports${modelName ? `?model_name=${encodeURIComponent(modelName)}` : ""}`,
+    ),
+  getAgentEvalReport: (id: string) =>
+    request<Record<string, unknown>>(`/agent-eval/reports/${id}`),
+  runAgentEval: (suiteFile: string, agentConfig: Record<string, unknown>, scoring: string) =>
+    request<Record<string, unknown>>("/agent-eval/run", {
+      method: "POST",
+      body: JSON.stringify({ suite_path: suiteFile, agent_config: agentConfig, scoring }),
+    }),
+  compareAgentEvalReports: (idA: string, idB: string) =>
+    request<Record<string, unknown>>(`/agent-eval/compare/${idA}/${idB}`),
+  getAgentEvalSuites: () =>
+    request<Array<{ path: string; name: string; description: string; num_cases: number; version: string }>>(
+      "/agent-eval/suites",
+    ),
+
   // Health
   health: () => request<{ status: string }>("/health"),
 
