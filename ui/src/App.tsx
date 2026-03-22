@@ -25,6 +25,7 @@ import { Datasets } from "@/pages/Datasets"
 import { Compute } from "@/pages/Compute"
 import { Agent } from "@/pages/Agent"
 import { Traces } from "@/pages/Traces"
+import { Lifecycle } from "@/pages/Lifecycle"
 import { Settings } from "@/pages/Settings"
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
             <Route path="/prompts" element={<PromptLab />} />
             <Route path="/agent" element={<Agent />} />
             <Route path="/traces" element={<Traces />} />
+            <Route path="/lifecycle" element={<Lifecycle />} />
             <Route path="/settings" element={<Settings />} />
           </Route>
         </Routes>

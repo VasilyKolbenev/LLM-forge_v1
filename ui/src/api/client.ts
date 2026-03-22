@@ -149,6 +149,16 @@ export const api = {
   revokeApiKey: (name: string) =>
     request<{ status: string }>(`/settings/keys/${name}`, { method: "DELETE" }),
 
+  // Lineage
+  getLineageGraph: (modelName?: string) =>
+    request<{ nodes: Array<{ id: string; data: Record<string, unknown> }>; edges: Array<{ id: string; source: string; target: string }> }>(
+      `/lineage/graph${modelName ? `?model_name=${encodeURIComponent(modelName)}` : ""}`,
+    ),
+  getLineageTimeline: (limit?: number) =>
+    request<{ events: Array<Record<string, unknown>> }>(
+      `/lineage/timeline${limit ? `?limit=${limit}` : ""}`,
+    ),
+
   // Health
   health: () => request<{ status: string }>("/health"),
 
