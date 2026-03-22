@@ -10,6 +10,7 @@ import {
   Server,
   Workflow,
   FileText,
+  GitBranch,
   LogOut,
   User,
 } from "lucide-react"
@@ -29,6 +30,7 @@ const links = [
   { to: "/prompts", icon: FileText, label: "Prompt Lab" },
   { to: "/agent", icon: MessageSquare, label: "Agent Chat" },
   { to: "/traces", icon: Activity, label: "Traces" },
+  { to: "/lifecycle", icon: GitBranch, label: "Lifecycle" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ]
 
