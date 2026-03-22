@@ -1,5 +1,22 @@
 import type { DragEvent } from "react"
 import { PERSONAS } from "./personas"
+import {
+  ScientistAvatar,
+  EngineerAvatar,
+  DevopsAvatar,
+  ArchitectAvatar,
+  SecurityAvatar,
+  ObserverAvatar,
+} from "./avatars"
+
+const AVATAR_MAP: Record<string, React.FC<{ size?: number; color?: string }>> = {
+  scientist: ScientistAvatar,
+  engineer: EngineerAvatar,
+  devops: DevopsAvatar,
+  architect: ArchitectAvatar,
+  security: SecurityAvatar,
+  observer: ObserverAvatar,
+}
 
 interface PaletteItem {
   type: string
@@ -78,14 +95,16 @@ export function NodePalette() {
                     className="flex items-center gap-2 px-2 py-1.5 rounded cursor-grab active:cursor-grabbing hover:bg-secondary transition-colors"
                   >
                     <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold"
+                      className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 overflow-hidden"
                       style={{
-                        backgroundColor: `${color}25`,
-                        color,
+                        backgroundColor: `${color}15`,
                         border: `1.5px solid ${color}50`,
                       }}
                     >
-                      {persona?.name.charAt(0) || "?"}
+                      {(() => {
+                        const AvatarComponent = AVATAR_MAP[persona?.category ?? "observer"] ?? ObserverAvatar
+                        return <AvatarComponent size={24} color={color} />
+                      })()}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-medium truncate">

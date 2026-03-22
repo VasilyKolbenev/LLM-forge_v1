@@ -1,6 +1,23 @@
 import { memo } from "react"
 import { motion } from "framer-motion"
 import type { OfficeEnvironment } from "../EnvironmentPicker"
+import {
+  ScientistAvatar,
+  EngineerAvatar,
+  DevopsAvatar,
+  ArchitectAvatar,
+  SecurityAvatar,
+  ObserverAvatar,
+} from "../avatars"
+
+const AVATAR_MAP: Record<string, React.FC<{ size?: number; color?: string }>> = {
+  scientist: ScientistAvatar,
+  engineer: EngineerAvatar,
+  devops: DevopsAvatar,
+  architect: ArchitectAvatar,
+  security: SecurityAvatar,
+  observer: ObserverAvatar,
+}
 
 interface DeskProps {
   x: number
@@ -198,13 +215,7 @@ function DeskInner({
       )}
 
       {/* Agent avatar */}
-      <motion.circle
-        cx={0}
-        cy={-60}
-        r={18}
-        fill={`${color}25`}
-        stroke={color}
-        strokeWidth={2}
+      <motion.g
         animate={
           status === "running"
             ? { scale: [1, 1.06, 1] }
@@ -219,19 +230,17 @@ function DeskInner({
               ? { duration: 3, repeat: Infinity, ease: "easeInOut" }
               : undefined
         }
-      />
-      {/* Agent initial letter or emoji */}
-      <text
-        x={0}
-        y={-55}
-        textAnchor="middle"
-        fill={color}
-        fontSize={avatarEmoji ? 16 : 14}
-        fontWeight="bold"
-        style={{ pointerEvents: "none", userSelect: "none" }}
       >
-        {avatarDisplay}
-      </text>
+        <circle cx={0} cy={-60} r={20} fill={`${color}15`} stroke={color} strokeWidth={1.5} />
+        <foreignObject x={-24} y={-84} width={48} height={48}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 48, height: 48 }}>
+            {(() => {
+              const AvatarComponent = AVATAR_MAP[category] ?? ObserverAvatar
+              return <AvatarComponent size={48} color={color} />
+            })()}
+          </div>
+        </foreignObject>
+      </motion.g>
 
       {/* Speech bubble */}
       {message && (
