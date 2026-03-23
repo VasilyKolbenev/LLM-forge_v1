@@ -33,7 +33,7 @@ class TraceStore:
 
     # ── Traces ────────────────────────────────────────────────────
 
-    def save_trace(self, trace_data: dict[str, Any]) -> str:
+    def save_trace(self, trace_data: dict[str, Any], user_id: str = "") -> str:
         """Save an agent trace.
 
         Args:
@@ -54,8 +54,8 @@ class TraceStore:
             INSERT INTO traces
                 (trace_id, agent_id, model_name, model_version,
                  user_query, response, trace_json, status,
-                 tokens_used, cost, latency_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 tokens_used, cost, latency_ms, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 trace_id,
@@ -69,25 +69,30 @@ class TraceStore:
                 trace_data.get("tokens_used", 0),
                 trace_data.get("cost", 0.0),
                 trace_data.get("latency_ms", 0),
+                user_id,
             ),
         )
         self._db.commit()
         logger.info("Saved trace %s", trace_id)
         return trace_id
 
-    def get_trace(self, trace_id: str) -> dict[str, Any] | None:
+    def get_trace(self, trace_id: str, user_id: str | None = None) -> dict[str, Any] | None:
         """Get a single trace by ID.
 
         Args:
             trace_id: Primary key of the trace.
+            user_id: Optional ownership check.
 
         Returns:
             Row as dict (with ``trace_json`` parsed) or ``None``.
         """
-        row = self._db.fetch_one(
-            "SELECT * FROM traces WHERE trace_id = ?",
-            (trace_id,),
-        )
+        clauses = ["trace_id = ?"]
+        params: list[str] = [trace_id]
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
+        where = " AND ".join(clauses)
+        row = self._db.fetch_one(f"SELECT * FROM traces WHERE {where}", tuple(params))
         if row is None:
             return None
         return self._parse_trace_row(row)
@@ -101,6 +106,7 @@ class TraceStore:
         status: str = "",
         min_rating: float | None = None,
         has_feedback: bool | None = None,
+        user_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -136,6 +142,9 @@ class TraceStore:
         if status:
             clauses.append("t.status = ?")
             params.append(status)
+        if user_id is not None:
+            clauses.append("t.user_id = ?")
+            params.append(user_id)
 
         need_join = min_rating is not None or has_feedback is not None
 
@@ -355,29 +364,39 @@ class TraceStore:
 
     # ── Statistics ─────────────────────────────────────────────────
 
-    def get_stats(self, days: int = 30) -> dict[str, Any]:
+    def get_stats(self, days: int = 30, user_id: str | None = None) -> dict[str, Any]:
         """Get trace statistics for the last *days* days.
 
         Args:
             days: How far back to look.
+            user_id: Optional user filter.
 
         Returns:
             Dict with ``total``, ``with_feedback``,
             ``avg_rating``, ``status_counts``,
             and ``traces_per_day`` keys.
         """
+        date_clause = "created_at >= datetime('now', ?)"
+        date_param = f"-{days} days"
+        user_clause = " AND user_id = ?" if user_id is not None else ""
+        base_params: tuple = (date_param, user_id) if user_id is not None else (date_param,)
+
         total_row = self._db.fetch_one(
-            "SELECT COUNT(*) AS cnt FROM traces " "WHERE created_at >= datetime('now', ?)",
-            (f"-{days} days",),
+            f"SELECT COUNT(*) AS cnt FROM traces WHERE {date_clause}{user_clause}",
+            base_params,
         )
         total = total_row["cnt"] if total_row else 0
 
+        fb_params: tuple = (
+            (date_param, user_id) if user_id is not None else (date_param,)
+        )
+        fb_user = " AND t.user_id = ?" if user_id is not None else ""
         fb_row = self._db.fetch_one(
             "SELECT COUNT(DISTINCT t.trace_id) AS cnt "
             "FROM traces t "
             "JOIN trace_feedback f ON t.trace_id = f.trace_id "
-            "WHERE t.created_at >= datetime('now', ?)",
-            (f"-{days} days",),
+            f"WHERE t.created_at >= datetime('now', ?){fb_user}",
+            fb_params,
         )
         with_feedback = fb_row["cnt"] if fb_row else 0
 
@@ -385,26 +404,26 @@ class TraceStore:
             "SELECT AVG(f.rating) AS avg_r "
             "FROM trace_feedback f "
             "JOIN traces t ON t.trace_id = f.trace_id "
-            "WHERE t.created_at >= datetime('now', ?)",
-            (f"-{days} days",),
+            f"WHERE t.created_at >= datetime('now', ?){fb_user}",
+            fb_params,
         )
         avg_rating = round(avg_row["avg_r"], 4) if avg_row and avg_row["avg_r"] is not None else 0.0
 
         status_rows = self._db.fetch_all(
             "SELECT status, COUNT(*) AS cnt FROM traces "
-            "WHERE created_at >= datetime('now', ?) "
+            f"WHERE {date_clause}{user_clause} "
             "GROUP BY status",
-            (f"-{days} days",),
+            base_params,
         )
         status_counts = {r["status"]: r["cnt"] for r in status_rows}
 
         per_day_rows = self._db.fetch_all(
             "SELECT DATE(created_at) AS day, COUNT(*) AS cnt "
             "FROM traces "
-            "WHERE created_at >= datetime('now', ?) "
+            f"WHERE {date_clause}{user_clause} "
             "GROUP BY DATE(created_at) "
             "ORDER BY day",
-            (f"-{days} days",),
+            base_params,
         )
         traces_per_day = {r["day"]: r["cnt"] for r in per_day_rows}
 

@@ -1,0 +1,16 @@
+# PodDisruptionBudget: ensures at least 1 pod remains available
+# during voluntary disruptions (node drain, cluster upgrades).
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pulsar-ai
+  namespace: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pulsar-ai
+      app.kubernetes.io/component: api

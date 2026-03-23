@@ -164,7 +164,7 @@ export function AgentEval() {
     if (compareA && compareB) {
       runComparison()
     }
-  }, [compareA, compareB])
+  }, [compareA, compareB]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const openRunModal = async () => {
     setShowRunModal(true)

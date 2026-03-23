@@ -2,9 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id
 from pulsar_ai.ui.experiment_store import ExperimentStore
 
 logger = logging.getLogger(__name__)
@@ -22,13 +23,14 @@ class EvalRequest(BaseModel):
 
 
 @router.post("/evaluation/run")
-async def run_eval(req: EvalRequest) -> dict:
+async def run_eval(request: Request, req: EvalRequest) -> dict:
     """Run evaluation on a trained model.
 
     Looks up experiment artifacts to find the adapter directory,
     then runs batch inference on the provided test data.
     """
-    exp = _store.get(req.experiment_id)
+    uid = get_scoped_user_id(request)
+    exp = _store.get(req.experiment_id, user_id=uid)
     if not exp:
         raise HTTPException(
             status_code=404,

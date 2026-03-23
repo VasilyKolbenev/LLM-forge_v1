@@ -8,14 +8,30 @@ services:
     volumes:
       - pulsar-data:/app/data
     environment:
+      - PULSAR_ENV=${PULSAR_ENV:-development}
       - PULSAR_CORS_ORIGINS=${PULSAR_CORS_ORIGINS:-https://localhost}
       - PULSAR_AUTH_ENABLED=${PULSAR_AUTH_ENABLED:-false}
       - PULSAR_JWT_SECRET=${PULSAR_JWT_SECRET:-}
       - PULSAR_DB_URL=${PULSAR_DB_URL:-}
       - PULSAR_REDIS_URL=${PULSAR_REDIS_URL:-}
+      - PULSAR_S3_BUCKET=${PULSAR_S3_BUCKET:-}
+      - PULSAR_S3_ENDPOINT=${PULSAR_S3_ENDPOINT:-}
       - PULSAR_LOG_LEVEL=${PULSAR_LOG_LEVEL:-INFO}
       - PULSAR_LOG_FORMAT=${PULSAR_LOG_FORMAT:-json}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+          cpus: "2.0"
+        reservations:
+          memory: 512m
+          cpus: "0.5"
     restart: unless-stopped
 
   nginx:
@@ -28,31 +44,61 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       - app
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
     restart: unless-stopped
 
-  # Optional: uncomment to enable Redis job queue
-  # redis:
-  #   image: redis:7-alpine
-  #   ports:
-  #     - "6379:6379"
-  #   volumes:
-  #     - redis-data:/data
-  #   restart: unless-stopped
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pulsar_ai
+      POSTGRES_USER: pulsar
+      POSTGRES_PASSWORD: ${PULSAR_PG_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulsar -d pulsar_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+        reservations:
+          memory: 256m
+    restart: unless-stopped
 
-  # Optional: uncomment to enable PostgreSQL
-  # postgres:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     POSTGRES_DB: pulsar
-  #     POSTGRES_USER: pulsar
-  #     POSTGRES_PASSWORD: ${PULSAR_PG_PASSWORD:-changeme}
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - pg-data:/var/lib/postgresql/data
-  #   restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+        reservations:
+          memory: 64m
+    restart: unless-stopped
 
 volumes:
   pulsar-data:
-  # redis-data:
-  # pg-data:
+  pg-data:
+  redis-data:

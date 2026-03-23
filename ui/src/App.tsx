@@ -28,7 +28,9 @@ import { Traces } from "@/pages/Traces"
 import { AgentEval } from "@/pages/AgentEval"
 import { OpenClaw } from "@/pages/OpenClaw"
 import { Lifecycle } from "@/pages/Lifecycle"
+import { Benchmarks } from "@/pages/Benchmarks"
 import { Settings } from "@/pages/Settings"
+import { Admin } from "@/pages/Admin"
 
 export default function App() {
   return (
@@ -59,7 +61,18 @@ export default function App() {
             <Route path="/agent-eval" element={<AgentEval />} />
             <Route path="/openclaw" element={<OpenClaw />} />
             <Route path="/lifecycle" element={<Lifecycle />} />
+            <Route path="/benchmarks" element={<Benchmarks />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/admin" element={<Admin />} />
+            <Route
+              path="*"
+              element={
+                <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground">
+                  <h1 className="text-4xl font-bold mb-2">404</h1>
+                  <p className="text-sm">Page not found</p>
+                </div>
+              }
+            />
           </Route>
         </Routes>
       </Suspense>

@@ -1,0 +1,137 @@
+# PostgreSQL StatefulSet for Pulsar AI.
+# Uses postgres:16-alpine to match docker-compose.yml.
+# For production, consider using a managed database service or
+# a Kubernetes operator (CloudNativePG, Zalando Postgres Operator).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pulsar-ai-postgresql
+  namespace: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: postgresql
+type: Opaque
+data:
+  # echo -n 'changeme' | base64
+  POSTGRES_PASSWORD: "Y2hhbmdlbWU="
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulsar-ai-postgresql
+  namespace: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: postgresql
+spec:
+  type: ClusterIP
+  # Headless service for StatefulSet stable DNS.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: postgresql
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pulsar-ai-postgresql
+  namespace: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: pulsar-ai-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pulsar-ai
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pulsar-ai
+        app.kubernetes.io/component: postgresql
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999    # postgres user in the alpine image
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgresql
+          image: postgres:16-alpine
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "pulsar_ai"
+            - name: POSTGRES_USER
+              value: "pulsar"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pulsar-ai-postgresql
+                  key: POSTGRES_PASSWORD
+            # Store data on the persistent volume.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          # Liveness: is PostgreSQL accepting connections?
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - pulsar
+                - -d
+                - pulsar_ai
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Readiness: same check, more frequent.
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - pulsar
+                - -d
+                - pulsar_ai
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          # Startup: give PostgreSQL up to 60s to initialize on first run.
+          startupProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - pulsar
+                - -d
+                - pulsar_ai
+            periodSeconds: 5
+            failureThreshold: 12
+          volumeMounts:
+            - name: pg-data
+              mountPath: /var/lib/postgresql/data
+  # Persistent volume for database storage.
+  volumeClaimTemplates:
+    - metadata:
+        name: pg-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi

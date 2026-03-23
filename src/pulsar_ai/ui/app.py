@@ -24,6 +24,11 @@ from pulsar_ai.ui.auth import (
     DemoModeMiddleware,
     JWTAuthMiddleware,
 )
+from pulsar_ai.ui.security_headers import (
+    RequestSizeLimitMiddleware,
+    RequestTimeoutMiddleware,
+    SecurityHeadersMiddleware,
+)
 from pulsar_ai.ui.auth_routes import router as auth_router
 from pulsar_ai.ui.routes import training, datasets, experiments, evaluation
 from pulsar_ai.ui.routes import export_routes, hardware
@@ -44,6 +49,10 @@ from pulsar_ai.ui.routes.traces import router as traces_router
 from pulsar_ai.ui.routes.lineage import router as lineage_router
 from pulsar_ai.ui.routes.agent_eval import router as agent_eval_router
 from pulsar_ai.ui.routes.openclaw import router as openclaw_router
+from pulsar_ai.ui.routes.benchmarks import router as benchmarks_router
+from pulsar_ai.ui.routes.cluster import router as cluster_router
+from pulsar_ai.ui.routes.governance import router as governance_router
+from pulsar_ai.ui.routes.admin import router as admin_router
 from pulsar_ai.ui.prometheus import router as prometheus_router
 
 _env_file = os.environ.get("PULSAR_ENV_FILE", "").strip()
@@ -57,6 +66,55 @@ logger = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+def _is_production() -> bool:
+    """Check whether the application is running in production mode.
+
+    Returns:
+        True if PULSAR_ENV is set to 'production'.
+    """
+    return os.environ.get("PULSAR_ENV", "development").strip().lower() == "production"
+
+
+def _validate_production_config() -> None:
+    """Validate that required environment variables are set in production.
+
+    Raises:
+        RuntimeError: If a required variable is missing in production mode.
+    """
+    missing: list[str] = []
+
+    if not os.environ.get("PULSAR_DB_URL", "").strip():
+        missing.append("PULSAR_DB_URL")
+    if not os.environ.get("PULSAR_JWT_SECRET", "").strip():
+        missing.append("PULSAR_JWT_SECRET")
+
+    if missing:
+        raise RuntimeError(
+            "Production mode requires the following environment variables: "
+            + ", ".join(missing)
+        )
+
+
+def _log_startup_banner() -> None:
+    """Log a banner showing which backends are active."""
+    db_url = os.environ.get("PULSAR_DB_URL", "").strip()
+    redis_url = os.environ.get("PULSAR_REDIS_URL", "").strip()
+    s3_bucket = os.environ.get("PULSAR_S3_BUCKET", "").strip()
+    env = os.environ.get("PULSAR_ENV", "development").strip().lower()
+
+    db_backend = "PostgreSQL" if db_url.startswith(("postgresql://", "postgres://")) else "SQLite"
+    queue_backend = "Redis" if redis_url else "Local"
+    storage_backend = f"S3 ({s3_bucket})" if s3_bucket else "Filesystem"
+
+    logger.info("=" * 60)
+    logger.info("Pulsar AI starting up")
+    logger.info("  Environment : %s", env)
+    logger.info("  Database    : %s", db_backend)
+    logger.info("  Job queue   : %s", queue_backend)
+    logger.info("  Artifacts   : %s", storage_backend)
+    logger.info("=" * 60)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):  # noqa: ARG001
     """FastAPI lifespan: startup and shutdown hooks."""
@@ -64,7 +122,11 @@ async def _lifespan(app: FastAPI):  # noqa: ARG001
     from pulsar_ai.logging_config import setup_logging
 
     setup_logging()
-    logger.info("Pulsar AI backend starting up")
+
+    if _is_production():
+        _validate_production_config()
+
+    _log_startup_banner()
     yield
     logger.info("Pulsar AI backend shutting down, cleaning up...")
     from pulsar_ai.ui.jobs import shutdown_executor
@@ -89,11 +151,26 @@ def create_app() -> FastAPI:
 
     # CORS: configurable via PULSAR_CORS_ORIGINS env var (comma-separated)
     cors_env = os.environ.get("PULSAR_CORS_ORIGINS", "")
-    cors_origins = (
-        [o.strip() for o in cors_env.split(",") if o.strip()]
-        if cors_env
-        else ["http://localhost:3000", "http://localhost:8888"]
-    )
+    production = _is_production()
+
+    if cors_env:
+        cors_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+    elif production:
+        # In production, require explicit origins — no permissive defaults
+        cors_origins = []
+        logger.warning(
+            "PULSAR_CORS_ORIGINS is not set in production mode. "
+            "CORS will reject all cross-origin requests until explicit "
+            "origins are configured."
+        )
+    else:
+        cors_origins = ["http://localhost:3000", "http://localhost:8888"]
+        if not cors_env and stand_mode not in ("dev", "demo"):
+            logger.warning(
+                "PULSAR_CORS_ORIGINS is not set — using insecure localhost defaults. "
+                "Set PULSAR_CORS_ORIGINS for non-development deployments."
+            )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins,
@@ -133,10 +210,23 @@ def create_app() -> FastAPI:
     app.state.auth_enabled = auth_enabled
     app.state.stand_mode = stand_mode
 
+    # Audit logging (after auth, logs mutations)
+    from pulsar_ai.ui.audit_middleware import AuditMiddleware
+    app.add_middleware(AuditMiddleware, enabled=auth_enabled)
+
     # Rate limiting
     limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
+
+    # Request size limit (100 MB — prevents DoS via large uploads)
+    app.add_middleware(RequestSizeLimitMiddleware)
+
+    # Request timeout (5 min — SSE/streaming responses are excluded)
+    app.add_middleware(RequestTimeoutMiddleware)
+
+    # Security headers (added last so it executes first in the chain)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # Prometheus metrics (no prefix — standard /metrics path)
     app.include_router(prometheus_router)
@@ -166,6 +256,10 @@ def create_app() -> FastAPI:
     app.include_router(lineage_router, prefix="/api/v1")
     app.include_router(agent_eval_router, prefix="/api/v1")
     app.include_router(openclaw_router, prefix="/api/v1")
+    app.include_router(benchmarks_router, prefix="/api/v1")
+    app.include_router(cluster_router, prefix="/api/v1")
+    app.include_router(governance_router, prefix="/api/v1")
+    app.include_router(admin_router, prefix="/api/v1")
 
     @app.get("/api/v1/health")
     async def health() -> dict:

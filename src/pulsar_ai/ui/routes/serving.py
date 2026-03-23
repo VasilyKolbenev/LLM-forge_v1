@@ -2,7 +2,9 @@
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id, get_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -10,7 +12,7 @@ router = APIRouter(prefix="/serving", tags=["serving"])
 
 
 @router.get("/metrics")
-async def get_serving_metrics(window: int = 60) -> dict:
+async def get_serving_metrics(request: Request, window: int = 60) -> dict:
     """Get serving metrics summary for a time window.
 
     Args:
@@ -18,7 +20,8 @@ async def get_serving_metrics(window: int = 60) -> dict:
     """
     from pulsar_ai.serving.metrics import get_global_metrics
 
-    return get_global_metrics().get_summary(window_seconds=window)
+    user_id = get_scoped_user_id(request)
+    return get_global_metrics().get_summary(window_seconds=window, user_id=user_id)
 
 
 @router.post("/metrics/reset")

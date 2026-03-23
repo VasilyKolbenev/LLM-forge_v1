@@ -1,0 +1,18 @@
+# ConfigMap: non-secret environment variables for Pulsar AI.
+# Update PULSAR_CORS_ORIGINS to match your actual domain before deploying.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pulsar-ai-config
+  namespace: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: config
+data:
+  PULSAR_ENV: "production"
+  PULSAR_LOG_FORMAT: "json"
+  PULSAR_LOG_LEVEL: "info"
+  # Comma-separated list of allowed CORS origins.
+  # Must match the Ingress host (with https://) for the frontend to work.
+  PULSAR_CORS_ORIGINS: "https://pulsar-ai.example.com"
+  PULSAR_AUTH_ENABLED: "true"

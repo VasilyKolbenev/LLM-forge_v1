@@ -267,6 +267,53 @@ def migrate_runs(db: Database, runs_dir: Path) -> int:
     return migrated
 
 
+_V9_USER_ID_TABLES = [
+    "experiments",
+    "prompts",
+    "workflows",
+    "runs",
+    "api_keys",
+    "jobs",
+    "assistant_sessions",
+    "traces",
+    "agent_eval_reports",
+    "benchmarks",
+]
+
+
+def migrate_v8_to_v9(db: Database) -> None:
+    """Add user_id column to core tables for multi-tenant isolation.
+
+    Idempotent: silently skips tables that already have the column.
+    Existing rows get user_id='', which admins can see.
+    """
+    with db.transaction() as conn:
+        for table in _V9_USER_ID_TABLES:
+            try:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN user_id TEXT DEFAULT ''"
+                )
+                logger.info("Added user_id column to %s", table)
+            except Exception:
+                # Column already exists — expected on repeated runs
+                pass
+
+        # Create indexes for the new columns
+        for table in _V9_USER_ID_TABLES:
+            try:
+                conn.execute(
+                    f"CREATE INDEX IF NOT EXISTS idx_{table}_user ON {table}(user_id)"
+                )
+            except Exception:
+                pass
+
+        conn.execute(
+            "INSERT OR REPLACE INTO _schema_meta (key, value) VALUES ('schema_version', '9')"
+        )
+
+    logger.info("Migration v8→v9 complete: user_id columns added to %d tables", len(_V9_USER_ID_TABLES))
+
+
 def migrate_all(
     db: Database,
     data_dir: Path | None = None,

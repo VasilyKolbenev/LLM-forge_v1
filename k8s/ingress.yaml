@@ -1,0 +1,40 @@
+# Ingress: external HTTPS access to Pulsar AI.
+# Requires an ingress controller (e.g. nginx-ingress) and cert-manager
+# for automatic TLS certificate provisioning via Let's Encrypt.
+#
+# Replace pulsar-ai.example.com with your actual domain.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pulsar-ai
+  namespace: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: ingress
+  annotations:
+    # cert-manager: automatically provision TLS certificates.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # nginx-ingress tuning.
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    # WebSocket support for SSE/streaming endpoints.
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/proxy-set-headers: "Upgrade"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - pulsar-ai.example.com
+      secretName: pulsar-ai-tls
+  rules:
+    - host: pulsar-ai.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pulsar-ai
+                port:
+                  number: 8888

@@ -41,6 +41,7 @@ class WorkflowStore:
         nodes: list[dict],
         edges: list[dict],
         workflow_id: str | None = None,
+        user_id: str = "",
     ) -> dict:
         """Save or update a workflow.
 
@@ -77,48 +78,71 @@ class WorkflowStore:
             """
             INSERT INTO workflows
                 (id, name, nodes, edges, schema_version,
-                 created_at, updated_at, last_run, run_count)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0)
+                 created_at, updated_at, last_run, run_count, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, ?)
             """,
-            (new_id, name, nodes_json, edges_json, SCHEMA_VERSION, now_iso, now_iso),
+            (new_id, name, nodes_json, edges_json, SCHEMA_VERSION, now_iso, now_iso, user_id),
         )
         self._db.commit()
         logger.info("Saved workflow %s: %s", new_id, name)
         return self.get(new_id)  # type: ignore[return-value]
 
-    def get(self, workflow_id: str) -> dict | None:
+    def get(self, workflow_id: str, user_id: str | None = None) -> dict | None:
         """Get a workflow by ID.
 
         Args:
             workflow_id: Workflow ID.
+            user_id: Optional ownership check.
 
         Returns:
             Workflow dict or None.
         """
-        row = self._db.fetch_one("SELECT * FROM workflows WHERE id = ?", (workflow_id,))
+        clauses = ["id = ?"]
+        params: list[str] = [workflow_id]
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
+        where = " AND ".join(clauses)
+        row = self._db.fetch_one(f"SELECT * FROM workflows WHERE {where}", tuple(params))
         if row is None:
             return None
         return self._row_to_dict(row)
 
-    def list_all(self) -> list[dict]:
-        """List all workflows (newest first).
+    def list_all(self, user_id: str | None = None) -> list[dict]:
+        """List all workflows (newest first), optionally filtered by user.
+
+        Args:
+            user_id: Optional user ownership filter.
 
         Returns:
             List of workflow dicts.
         """
-        rows = self._db.fetch_all("SELECT * FROM workflows ORDER BY updated_at DESC")
+        if user_id is not None:
+            rows = self._db.fetch_all(
+                "SELECT * FROM workflows WHERE user_id = ? ORDER BY updated_at DESC",
+                (user_id,),
+            )
+        else:
+            rows = self._db.fetch_all("SELECT * FROM workflows ORDER BY updated_at DESC")
         return [self._row_to_dict(r) for r in rows]
 
-    def delete(self, workflow_id: str) -> bool:
+    def delete(self, workflow_id: str, user_id: str | None = None) -> bool:
         """Delete a workflow.
 
         Args:
             workflow_id: Workflow ID.
+            user_id: Optional ownership check.
 
         Returns:
             True if deleted, False if not found.
         """
-        cursor = self._db.execute("DELETE FROM workflows WHERE id = ?", (workflow_id,))
+        clauses = ["id = ?"]
+        params: list[str] = [workflow_id]
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
+        where = " AND ".join(clauses)
+        cursor = self._db.execute(f"DELETE FROM workflows WHERE {where}", tuple(params))
         self._db.commit()
         return cursor.rowcount > 0
 

@@ -1,0 +1,17 @@
+task: sft
+task_type: multimodal
+
+vision:
+  enabled: true
+  freeze_vision_encoder: true
+  image_size: 448
+
+training:
+  packing: false      # required for multimodal (variable image sizes)
+  max_seq_length: 2048
+  dataset_num_proc: 2
+
+dataset:
+  image_column: image
+  conversations_column: conversations
+  output_format: json

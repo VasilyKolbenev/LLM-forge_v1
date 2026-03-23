@@ -67,7 +67,7 @@ def main(verbose: bool) -> None:
 @click.argument("overrides", nargs=-1)
 @click.option(
     "--task",
-    type=click.Choice(["sft", "dpo", "grpo", "embedding", "reranker", "classification", "auto"]),
+    type=click.Choice(["sft", "dpo", "grpo", "embedding", "reranker", "classification", "multimodal-sft", "auto"]),
     default="auto",
     help="Training task (default: auto-detect from config).",
 )
@@ -162,6 +162,12 @@ def train(
         if task == "sft":
             from pulsar_ai.training.sft import train_sft
 
+            results = train_sft(config, progress=progress)
+        elif task == "multimodal-sft":
+            from pulsar_ai.training.sft import train_sft
+
+            config["task_type"] = "multimodal"
+            config.setdefault("vision", {})["enabled"] = True
             results = train_sft(config, progress=progress)
         elif task == "dpo":
             from pulsar_ai.training.dpo import train_dpo
@@ -1721,6 +1727,127 @@ def retrain(
     console.print("[green]Retrain pipeline complete![/green]")
 
 
+@main.command()
+@click.argument("model_path", type=click.Path(), default="")
+@click.option("--eval-data", type=click.Path(), default=None, help="Path to eval data for perplexity.")
+@click.option("--gpu-cost", type=float, default=2.0, help="GPU hourly cost for $/1M estimate.")
+@click.option("--tag", multiple=True, help="Tags for this benchmark run.")
+@click.option("--seed-baselines", is_flag=True, help="Seed baseline models into store.")
+@click.option("--list", "list_all", is_flag=True, help="List all benchmarks.")
+@click.option("--leaderboard", is_flag=True, help="Show leaderboard.")
+@click.option("--metric", default="tokens_per_sec", help="Leaderboard sort metric.")
+def benchmark(
+    model_path: str,
+    eval_data: Optional[str],
+    gpu_cost: float,
+    tag: tuple[str, ...],
+    seed_baselines: bool,
+    list_all: bool,
+    leaderboard: bool,
+    metric: str,
+) -> None:
+    """Benchmark model inference speed, memory, and quality.
+
+    \b
+    Examples:
+        pulsar benchmark ./models/my-finetuned-7b
+        pulsar benchmark --seed-baselines
+        pulsar benchmark --list
+        pulsar benchmark --leaderboard --metric perplexity
+    """
+    from pulsar_ai.benchmark.store import BenchmarkStore
+
+    store = BenchmarkStore()
+
+    if seed_baselines:
+        from pulsar_ai.benchmark.baselines import seed_baselines as do_seed
+        count = do_seed(store)
+        console.print(f"[green]Seeded {count} baselines[/green]")
+        if not model_path and not list_all and not leaderboard:
+            return
+
+    if list_all:
+        benchmarks = store.list_all(limit=30)
+        if not benchmarks:
+            console.print("[dim]No benchmarks found. Use --seed-baselines first.[/dim]")
+            return
+        table = Table(title="Benchmarks")
+        table.add_column("Model", style="cyan")
+        table.add_column("Tok/s", style="green", justify="right")
+        table.add_column("TTFT ms", justify="right")
+        table.add_column("VRAM GB", justify="right")
+        table.add_column("Params", justify="right")
+        table.add_column("PPL", justify="right")
+        table.add_column("$/1M", justify="right")
+        table.add_column("Baseline", justify="center")
+        for b in benchmarks:
+            params_str = f"{b['model_size_params'] / 1e9:.1f}B" if b["model_size_params"] > 0 else "-"
+            ppl_str = f"{b['perplexity']:.2f}" if b.get("perplexity") else "-"
+            table.add_row(
+                b["model_name"],
+                f"{b['tokens_per_sec']:.1f}",
+                f"{b['time_to_first_token_ms']:.0f}",
+                f"{b['peak_vram_gb']:.1f}",
+                params_str,
+                ppl_str,
+                f"${b['estimated_cost_per_1m_tokens']:.2f}",
+                "✓" if b.get("is_baseline") else "",
+            )
+        console.print(table)
+        return
+
+    if leaderboard:
+        try:
+            results = store.leaderboard(metric=metric, limit=20)
+        except ValueError as e:
+            console.print(f"[red]{e}[/red]")
+            return
+        if not results:
+            console.print("[dim]No benchmarks found.[/dim]")
+            return
+        table = Table(title=f"Leaderboard — {metric}")
+        table.add_column("#", style="yellow", justify="right")
+        table.add_column("Model", style="cyan")
+        table.add_column(metric, style="green", justify="right")
+        for i, b in enumerate(results, 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else str(i)
+            val = b.get(metric, 0)
+            val_str = f"{val:.2f}" if isinstance(val, float) else str(val)
+            table.add_row(medal, b["model_name"], val_str)
+        console.print(table)
+        return
+
+    if not model_path:
+        console.print("[yellow]Provide model_path or use --list/--leaderboard/--seed-baselines[/yellow]")
+        return
+
+    from pulsar_ai.benchmark.runner import run_benchmark as do_run
+
+    config: dict = {"gpu_cost_per_hour": gpu_cost}
+    if eval_data:
+        config["eval_data"] = eval_data
+
+    console.print(Panel(f"Benchmarking: {model_path}"))
+    result = do_run(model_path=model_path, config=config, tags=list(tag), store=store)
+
+    table = Table(title="Benchmark Results")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    table.add_row("Model", result.model_name)
+    table.add_row("Tokens/sec", f"{result.tokens_per_sec:.1f}")
+    table.add_row("TTFT (ms)", f"{result.time_to_first_token_ms:.1f}")
+    table.add_row("Peak VRAM (GB)", f"{result.peak_vram_gb:.2f}")
+    params_str = f"{result.model_size_params / 1e9:.1f}B" if result.model_size_params > 0 else "-"
+    table.add_row("Parameters", params_str)
+    table.add_row("Disk (MB)", f"{result.model_size_disk_mb:.1f}")
+    if result.perplexity is not None:
+        table.add_row("Perplexity", f"{result.perplexity:.2f}")
+    table.add_row("$/1M tokens", f"${result.estimated_cost_per_1m_tokens:.4f}")
+    table.add_row("ID", result.id)
+    console.print(table)
+    console.print("[green]Benchmark saved![/green]")
+
+
 def _show_eval_results(results: dict) -> None:
     """Display evaluation results panel.
 
@@ -1756,6 +1883,126 @@ def _show_eval_results(results: dict) -> None:
                 cls_table.add_row(cls_name, f"{acc:.2%}", str(count))
 
         console.print(cls_table)
+
+
+# ── Cluster commands ─────────────────────────────────────────────
+
+
+@main.group()
+def cluster() -> None:
+    """Manage compute cluster for distributed training."""
+
+
+@cluster.command()
+def status() -> None:
+    """Show cluster overview: targets, GPUs, health."""
+    from pulsar_ai.compute.cluster import ClusterManager
+
+    cm = ClusterManager()
+    info = cm.get_cluster_status()
+
+    table = Table(title="Cluster Status")
+    table.add_column("Target", style="cyan")
+    table.add_column("Host", style="dim")
+    table.add_column("GPUs", justify="right")
+    table.add_column("Type", style="yellow")
+    table.add_column("VRAM/GPU", justify="right")
+    table.add_column("Status", style="green")
+
+    for t in info["targets"]:
+        status_color = "green" if t["status"] == "online" else "red"
+        table.add_row(
+            t["name"],
+            t["host"],
+            str(t["gpu_count"]),
+            t["gpu_type"],
+            f"{t['vram_gb']}GB",
+            f"[{status_color}]{t['status']}[/{status_color}]",
+        )
+
+    console.print(table)
+    console.print(
+        f"\nTotal: [bold]{info['total_gpus']}[/bold] GPUs, "
+        f"[bold]{info['total_vram_gb']}[/bold] GB VRAM, "
+        f"[bold]{info['healthy_targets']}/{info['total_targets']}[/bold] targets online"
+    )
+
+
+@cluster.command()
+@click.argument("host")
+@click.option("--user", "-u", required=True, help="SSH username.")
+@click.option("--name", "-n", default=None, help="Display name for the target.")
+@click.option("--port", "-p", default=22, help="SSH port.")
+@click.option("--key", "-k", default="", help="Path to SSH key file.")
+def add(host: str, user: str, name: Optional[str], port: int, key: str) -> None:
+    """Add a compute target to the cluster.
+
+    \b
+    Examples:
+        pulsar cluster add gpu-server-1 -u admin -n "GPU Box 1"
+        pulsar cluster add 10.0.0.5 -u root -p 2222 -k ~/.ssh/gpu_key
+    """
+    from pulsar_ai.compute.manager import ComputeManager
+
+    cm = ComputeManager()
+    target_id = cm.add_target(
+        name=name or host,
+        host=host,
+        user=user,
+        port=port,
+        key_path=key,
+    )
+    console.print(f"[green]Added target:[/green] {target_id}")
+
+    # Auto-detect hardware
+    try:
+        hw = cm.detect_remote_hardware(target_id)
+        console.print(
+            f"  Detected: {hw.get('gpu_count', 0)} × {hw.get('gpu_type', 'unknown')} "
+            f"({hw.get('vram_gb', 0)}GB VRAM)"
+        )
+    except Exception as exc:
+        console.print(f"  [yellow]Hardware detection failed: {exc}[/yellow]")
+
+
+@cluster.command()
+@click.argument("target_id")
+def remove(target_id: str) -> None:
+    """Remove a compute target from the cluster."""
+    from pulsar_ai.compute.manager import ComputeManager
+
+    cm = ComputeManager()
+    cm.remove_target(target_id)
+    console.print(f"[green]Removed target:[/green] {target_id}")
+
+
+@cluster.command()
+def preflight() -> None:
+    """Run pre-flight checks for distributed training on all targets."""
+    from pulsar_ai.compute.cluster import ClusterManager
+
+    cm = ClusterManager()
+    info = cm.get_cluster_status()
+    target_ids = [t["id"] for t in info["targets"]]
+
+    if not target_ids:
+        console.print("[yellow]No compute targets configured. Use 'pulsar cluster add' first.[/yellow]")
+        return
+
+    result = cm.preflight_check(config={}, target_ids=target_ids)
+
+    if result["passed"]:
+        console.print(
+            f"[green]Pre-flight passed![/green] "
+            f"{result['total_gpus']} GPUs, {result['total_vram_gb']}GB VRAM"
+        )
+    else:
+        console.print("[red]Pre-flight FAILED:[/red]")
+        for issue in result["issues"]:
+            console.print(f"  [red]✗[/red] {issue}")
+
+    for warning in result.get("warnings", []):
+        console.print(f"  [yellow]⚠[/yellow] {warning}")
 
 
 # ── OpenClaw commands ────────────────────────────────────────────

@@ -23,15 +23,23 @@ COPY --from=frontend /app/src/pulsar_ai/ui/static src/pulsar_ai/ui/static/
 # Install Python package with UI dependencies
 RUN pip install --no-cache-dir ".[ui]"
 
-# Create data directory for SQLite database
-RUN mkdir -p /app/data
+# Create non-root user and data directory
+RUN groupadd --system pulsar && \
+    useradd --system --gid pulsar --create-home pulsar && \
+    mkdir -p /app/data && \
+    chown -R pulsar:pulsar /app/data
 
 EXPOSE 8888
 
 ENV PULSAR_CORS_ORIGINS="http://localhost:8888"
 ENV PULSAR_AUTH_ENABLED="false"
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+# Switch to non-root user
+USER pulsar
+
+STOPSIGNAL SIGTERM
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8888/api/v1/health || exit 1
 
 CMD ["python", "-m", "uvicorn", "pulsar_ai.ui.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8888"]

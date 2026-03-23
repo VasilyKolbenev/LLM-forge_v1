@@ -3,9 +3,10 @@
 import logging
 from copy import deepcopy
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id, get_user_id
 from pulsar_ai.ui.workflow_policy import (
     format_governance_error,
     validate_workflow_nodes,
@@ -174,19 +175,22 @@ class CreateFromTemplateRequest(BaseModel):
 
 
 @router.get("")
-async def list_workflows() -> list[dict]:
+async def list_workflows(request: Request) -> list[dict]:
     """List all saved workflows."""
-    return _store.list_all()
+    uid = get_scoped_user_id(request)
+    return _store.list_all(user_id=uid)
 
 
 @router.post("")
-async def save_workflow(req: SaveWorkflowRequest) -> dict:
+async def save_workflow(request: Request, req: SaveWorkflowRequest) -> dict:
     """Save or update a workflow."""
+    uid = get_user_id(request)
     return _store.save(
         name=req.name,
         nodes=req.nodes,
         edges=req.edges,
         workflow_id=req.workflow_id,
+        user_id=uid,
     )
 
 
@@ -225,18 +229,20 @@ async def create_workflow_from_template(
 
 
 @router.get("/{workflow_id}")
-async def get_workflow(workflow_id: str) -> dict:
+async def get_workflow(request: Request, workflow_id: str) -> dict:
     """Get a single workflow by ID."""
-    wf = _store.get(workflow_id)
+    uid = get_scoped_user_id(request)
+    wf = _store.get(workflow_id, user_id=uid)
     if not wf:
         raise HTTPException(status_code=404, detail="Workflow not found")
     return wf
 
 
 @router.delete("/{workflow_id}")
-async def delete_workflow(workflow_id: str) -> dict:
+async def delete_workflow(request: Request, workflow_id: str) -> dict:
     """Delete a workflow."""
-    if _store.delete(workflow_id):
+    uid = get_scoped_user_id(request)
+    if _store.delete(workflow_id, user_id=uid):
         return {"status": "deleted"}
     raise HTTPException(status_code=404, detail="Workflow not found")
 

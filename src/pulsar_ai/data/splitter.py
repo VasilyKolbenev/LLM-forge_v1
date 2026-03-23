@@ -46,3 +46,29 @@ def train_test_split_dataset(
         test_size,
     )
     return train_df, test_df
+
+
+def split_dataset(
+    df: pd.DataFrame,
+    test_size: float = 0.1,
+    seed: Optional[int] = None,
+    stratify_column: Optional[str] = None,
+) -> dict[str, pd.DataFrame]:
+    """Split a DataFrame into train and test sets (dict interface).
+
+    Wrapper around train_test_split_dataset that returns a dict
+    with 'train' and 'test' keys as expected by the SFT trainer.
+
+    Args:
+        df: Source DataFrame.
+        test_size: Fraction of data for the test set.
+        seed: Random seed.
+        stratify_column: Column for stratified splitting.
+
+    Returns:
+        Dict with 'train' and 'test' DataFrames.
+    """
+    train_df, test_df = train_test_split_dataset(
+        df, test_size=test_size, seed=seed, stratify_column=stratify_column,
+    )
+    return {"train": train_df, "test": test_df}

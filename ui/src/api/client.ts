@@ -1,5 +1,67 @@
 ﻿const BASE = "/api/v1"
 
+// Benchmark types used by api methods and Benchmarks page
+export interface BenchmarkHardwareInfo {
+  gpu_name: string
+  vram_gb: number
+  num_gpus: number
+}
+
+export interface Benchmark {
+  id: string
+  model_path: string
+  model_name: string
+  experiment_id: string
+  hardware_info: BenchmarkHardwareInfo
+  timestamp: string
+  tokens_per_sec: number
+  time_to_first_token_ms: number
+  training_samples_per_sec: number
+  peak_vram_gb: number
+  model_size_params: number
+  model_size_disk_mb: number
+  perplexity: number | null
+  eval_loss: number | null
+  task_metrics: Record<string, number>
+  estimated_cost_per_1m_tokens: number
+  config: Record<string, unknown>
+  status: string
+  tags: string[]
+  is_baseline: boolean
+}
+
+export interface CompareResult {
+  baseline: Benchmark
+  candidates: Benchmark[]
+  deltas: Record<string, Record<string, number>>
+}
+
+export interface AdminUser {
+  id: string
+  email: string
+  name: string
+  role: string
+  is_active: boolean
+  last_login: string | null
+  created_at: string
+}
+
+export interface SystemHealth {
+  database: { connected: boolean; type: string }
+  redis: { connected: boolean; latency_ms: number }
+  s3: { configured: boolean; bucket: string }
+  disk: { total_gb: number; used_gb: number; free_gb: number }
+  memory: { total_gb: number; used_gb: number; free_gb: number }
+}
+
+export interface SystemStats {
+  total_users: number
+  active_users: number
+  total_experiments: number
+  total_datasets: number
+  uptime_seconds: number
+}
+
 let _apiKey: string | null = localStorage.getItem("pulsar_api_key")
 
 export function setApiKey(key: string | null) {
@@ -20,13 +82,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     headers["Authorization"] = `Bearer ${_apiKey}`
   }
   const res = await fetch(`${BASE}${path}`, {
-    headers,
     ...options,
+    headers: {
+      ...headers,
+      ...options?.headers,
+    },
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     throw new Error(body.detail || `HTTP ${res.status}`)
   }
+  if (res.status === 204) return undefined as T
   return res.json()
 }
 
@@ -207,8 +273,72 @@ export const api = {
   stopOpenClawDeployment: (id: string) =>
     request<Record<string, unknown>>(`/openclaw/deployments/${id}`, { method: "DELETE" }),
 
+  // Benchmarks
+  getBenchmarks: () =>
+    request<{ benchmarks: Benchmark[] }>("/benchmarks"),
+  getBenchmarkLeaderboard: (metric: string, order: string) =>
+    request<{ leaderboard: Benchmark[] }>(
+      `/benchmarks/leaderboard?metric=${metric}&order=${order}`,
+    ),
+  compareBenchmarks: (ids: string[]) =>
+    request<CompareResult>(`/benchmarks/compare?ids=${ids.join(",")}`),
+  deleteBenchmark: (id: string) =>
+    request<Record<string, unknown>>(`/benchmarks/${id}`, { method: "DELETE" }),
+  runBenchmark: (data: {
+    model_path: string
+    model_name: string
+    gpu_cost?: number
+    tags?: string[]
+  }) =>
+    request<Record<string, unknown>>("/benchmarks/run", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  // Governance
+  getGovernanceApprovals: (status?: string) =>
+    request<{ approvals: Array<Record<string, unknown>> }>(
+      `/governance/approvals${status ? `?status=${status}` : ""}`,
+    ),
+  reviewGovernanceApproval: (id: string, decision: { status: string; reason?: string }) =>
+    request<Record<string, unknown>>(`/governance/approvals/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify(decision),
+    }),
+  getGovernanceAudit: (resourceType?: string) =>
+    request<{ events: Array<Record<string, unknown>> }>(
+      `/governance/audit${resourceType ? `?resource_type=${resourceType}` : ""}`,
+    ),
+
+  // Admin - Users
+  getAdminUsers: () => request<{ users: AdminUser[] }>("/admin/users"),
+  getAdminUser: (id: string) => request<AdminUser>(`/admin/users/${id}`),
+  updateAdminUser: (id: string, data: { name?: string; role?: string; is_active?: boolean }) =>
+    request(`/admin/users/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  resetUserPassword: (id: string) =>
+    request<{ temporary_password: string }>(`/admin/users/${id}/reset-password`, { method: "POST" }),
+  deactivateUser: (id: string) =>
+    request(`/admin/users/${id}/deactivate`, { method: "POST" }),
+  activateUser: (id: string) =>
+    request(`/admin/users/${id}/activate`, { method: "POST" }),
+  forceLogoutUser: (id: string) =>
+    request(`/admin/users/${id}/force-logout`, { method: "POST" }),
+  // Admin - System
+  getSystemHealth: () => request<SystemHealth>("/admin/system/health"),
+  getSystemStats: () => request<SystemStats>("/admin/system/stats"),
+  runSystemCleanup: () =>
+    request<{ cleaned: Record<string, number> }>("/admin/system/cleanup", { method: "POST" }),
+  getSystemConfig: () => request<Record<string, unknown>>("/admin/system/config"),
+
   // Health
   health: () => request<{ status: string }>("/health"),
+
+  // Agent
+  agentChat: (data: { message: string }) =>
+    request<{ message?: string; answer?: string; trace_id?: string }>("/agent/chat", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   // Assistant
   assistantChat: (data: { message: string; session_id?: string; context?: Record<string, unknown> }) =>

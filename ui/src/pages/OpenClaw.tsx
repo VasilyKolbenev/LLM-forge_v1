@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import {
   Cpu,
   RefreshCw,
@@ -11,10 +11,17 @@ import {
   ShieldCheck,
   AlertCircle,
   CheckCircle2,
+  Shield,
+  Check,
+  X,
+  Clock,
+  FileText,
+  Lock,
+  Unlock,
 } from "lucide-react"
 import { api } from "@/api/client"
 
-type TabId = "sessions" | "deployments"
+type TabId = "sessions" | "deployments" | "governance"
 
 interface Session {
   session_id: string
@@ -51,6 +58,26 @@ interface HealthStatus {
   error?: string
 }
 
+interface GovernanceApproval {
+  id: string
+  session_id: string
+  agent_name: string
+  status: "pending" | "approved" | "rejected"
+  requested_at: string
+  reviewed_at?: string
+  reviewer?: string
+  reason?: string
+}
+
+interface AuditEvent {
+  id: string
+  timestamp: string
+  event_type: string
+  session_id: string
+  details: string
+  actor?: string
+}
+
 export function OpenClaw() {
   const [tab, setTab] = useState<TabId>("sessions")
   const [health, setHealth] = useState<HealthStatus | null>(null)
@@ -59,6 +86,11 @@ export function OpenClaw() {
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [expandedTrace, setExpandedTrace] = useState<Record<string, unknown>[] | null>(null)
+
+  // Governance
+  const [approvals, setApprovals] = useState<GovernanceApproval[]>([])
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([])
+  const [governanceLoading, setGovernanceLoading] = useState(false)
 
   // Modals
   const [showCreateSession, setShowCreateSession] = useState(false)
@@ -115,11 +147,28 @@ export function OpenClaw() {
     }
   }, [])
 
+  const fetchGovernance = useCallback(async () => {
+    setGovernanceLoading(true)
+    try {
+      const [approvalsData, auditData] = await Promise.all([
+        api.getGovernanceApprovals("pending"),
+        api.getGovernanceAudit("openclaw-session"),
+      ])
+      setApprovals((approvalsData.approvals || []) as GovernanceApproval[])
+      setAuditEvents((auditData.events || []) as AuditEvent[])
+    } catch {
+      /* ignore */
+    } finally {
+      setGovernanceLoading(false)
+    }
+  }, [])
+
   const refresh = useCallback(() => {
     fetchHealth()
     fetchSessions()
     fetchDeployments()
-  }, [fetchHealth, fetchSessions, fetchDeployments])
+    fetchGovernance()
+  }, [fetchHealth, fetchSessions, fetchDeployments, fetchGovernance])
 
   useEffect(() => {
     refresh()
@@ -156,6 +205,15 @@ export function OpenClaw() {
     try {
       await api.stopOpenClawDeployment(id)
       fetchDeployments()
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const handleReviewApproval = async (id: string, status: "approved" | "rejected") => {
+    try {
+      await api.reviewGovernanceApproval(id, { status })
+      fetchGovernance()
     } catch {
       /* ignore */
     }
@@ -272,6 +330,17 @@ export function OpenClaw() {
         <TabButton active={tab === "deployments"} onClick={() => setTab("deployments")}>
           Deployments ({deployments.length})
         </TabButton>
+        <TabButton active={tab === "governance"} onClick={() => setTab("governance")}>
+          <span className="flex items-center gap-1.5">
+            <Shield size={14} />
+            Governance
+            {approvals.length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-yellow-500/20 text-yellow-500 border border-yellow-500/30">
+                {approvals.length}
+              </span>
+            )}
+          </span>
+        </TabButton>
       </div>
 
       {/* Sessions tab */}
@@ -315,9 +384,8 @@ export function OpenClaw() {
                   </tr>
                 )}
                 {sessions.map((s) => (
-                  <>
+                  <Fragment key={s.session_id}>
                     <tr
-                      key={s.session_id}
                       onClick={() => loadSessionTrace(s.session_id)}
                       className="border-b border-border hover:bg-secondary/50 cursor-pointer transition-colors"
                     >
@@ -375,7 +443,7 @@ export function OpenClaw() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -444,6 +512,189 @@ export function OpenClaw() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Governance tab */}
+      {tab === "governance" && (
+        <div className="space-y-6">
+          {/* Policy Summary Card */}
+          <div className="bg-card border border-border rounded-lg p-4">
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
+              <ShieldCheck size={16} />
+              Policy Summary
+            </h3>
+            <div className="flex items-center gap-4">
+              {sessions.some(
+                (s) =>
+                  s.metadata?.policy === "restricted" ||
+                  s.metadata?.restricted === true,
+              ) ? (
+                <div className="flex items-center gap-2 text-sm">
+                  <Lock size={14} className="text-yellow-500" />
+                  <span className="text-xs px-2 py-0.5 rounded-full border bg-yellow-500/10 text-yellow-500 border-yellow-500/30">
+                    Restricted
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    Sessions require approval before execution
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm">
+                  <Unlock size={14} className="text-green-500" />
+                  <span className="text-xs px-2 py-0.5 rounded-full border bg-green-500/10 text-green-500 border-green-500/30">
+                    Open
+                  </span>
+                  <span className="text-muted-foreground text-xs">
+                    Sessions run without manual approval
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Pending Approvals */}
+          <div>
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
+              <Clock size={16} />
+              Pending Approvals ({approvals.length})
+            </h3>
+            <div className="border border-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-card border-b border-border">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Session ID</th>
+                    <th className="px-3 py-2 text-left">Agent</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                    <th className="px-3 py-2 text-left">Requested</th>
+                    <th className="px-3 py-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {governanceLoading && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-3 py-8 text-center text-muted-foreground"
+                      >
+                        Loading...
+                      </td>
+                    </tr>
+                  )}
+                  {!governanceLoading && approvals.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        className="px-3 py-8 text-center text-muted-foreground"
+                      >
+                        No pending approvals
+                      </td>
+                    </tr>
+                  )}
+                  {approvals.map((a) => (
+                    <tr
+                      key={a.id}
+                      className="border-b border-border hover:bg-secondary/50 transition-colors"
+                    >
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {a.session_id}
+                      </td>
+                      <td className="px-3 py-2">{a.agent_name}</td>
+                      <td className="px-3 py-2">
+                        <ApprovalBadge status={a.status} />
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
+                        {new Date(a.requested_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() =>
+                              handleReviewApproval(a.id, "approved")
+                            }
+                            title="Approve"
+                            className="p-1.5 rounded hover:bg-green-500/20 transition-colors text-green-500"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleReviewApproval(a.id, "rejected")
+                            }
+                            title="Reject"
+                            className="p-1.5 rounded hover:bg-red-500/20 transition-colors text-red-500"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Audit Trail */}
+          <div>
+            <h3 className="text-sm font-medium flex items-center gap-2 mb-3">
+              <FileText size={16} />
+              Audit Trail
+            </h3>
+            <div className="border border-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-card border-b border-border">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Timestamp</th>
+                    <th className="px-3 py-2 text-left">Event Type</th>
+                    <th className="px-3 py-2 text-left">Session ID</th>
+                    <th className="px-3 py-2 text-left">Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {governanceLoading && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-3 py-8 text-center text-muted-foreground"
+                      >
+                        Loading...
+                      </td>
+                    </tr>
+                  )}
+                  {!governanceLoading && auditEvents.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-3 py-8 text-center text-muted-foreground"
+                      >
+                        No audit events found
+                      </td>
+                    </tr>
+                  )}
+                  {auditEvents.map((e) => (
+                    <tr
+                      key={e.id}
+                      className="border-b border-border hover:bg-secondary/50 transition-colors"
+                    >
+                      <td className="px-3 py-2 text-muted-foreground whitespace-nowrap text-xs">
+                        {new Date(e.timestamp).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2">
+                        <AuditEventBadge type={e.event_type} />
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {e.session_id}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground text-xs max-w-[300px] truncate">
+                        {e.details}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -800,5 +1051,41 @@ function FormInput({
         className="w-full bg-input border border-border rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-ring focus:outline-none"
       />
     </div>
+  )
+}
+
+function ApprovalBadge({ status }: { status: string }) {
+  const colors: Record<string, string> = {
+    pending: "bg-yellow-500/10 text-yellow-500 border-yellow-500/30",
+    approved: "bg-green-500/10 text-green-500 border-green-500/30",
+    rejected: "bg-red-500/10 text-red-500 border-red-500/30",
+  }
+
+  return (
+    <span
+      className={`text-xs px-2 py-0.5 rounded-full border ${colors[status] || "bg-gray-500/10 text-gray-400 border-gray-500/30"}`}
+    >
+      {status}
+    </span>
+  )
+}
+
+function AuditEventBadge({ type }: { type: string }) {
+  const colors: Record<string, string> = {
+    "session.created": "bg-blue-500/10 text-blue-500 border-blue-500/30",
+    "session.started": "bg-green-500/10 text-green-500 border-green-500/30",
+    "session.stopped": "bg-yellow-500/10 text-yellow-500 border-yellow-500/30",
+    "session.failed": "bg-red-500/10 text-red-500 border-red-500/30",
+    "approval.requested": "bg-purple-500/10 text-purple-500 border-purple-500/30",
+    "approval.granted": "bg-green-500/10 text-green-500 border-green-500/30",
+    "approval.rejected": "bg-red-500/10 text-red-500 border-red-500/30",
+  }
+
+  return (
+    <span
+      className={`text-xs px-2 py-0.5 rounded-full border ${colors[type] || "bg-gray-500/10 text-gray-400 border-gray-500/30"}`}
+    >
+      {type}
+    </span>
   )
 }

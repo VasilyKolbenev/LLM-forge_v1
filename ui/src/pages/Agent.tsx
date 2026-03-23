@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react"
 import { Send, MessageSquare } from "lucide-react"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { FeedbackButtons } from "@/components/FeedbackButtons"
+import { api } from "@/api/client"
 
 interface Message {
   role: "user" | "assistant"
@@ -27,17 +28,7 @@ export function Agent() {
     setLoading(true)
 
     try {
-      const res = await fetch("/api/v1/agent/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg }),
-      })
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`)
-      }
-
-      const data = await res.json()
+      const data = await api.agentChat({ message: userMsg })
       setMessages((prev) => [
         ...prev,
         {

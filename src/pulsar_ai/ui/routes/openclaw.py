@@ -4,13 +4,22 @@ import logging
 from dataclasses import asdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from pulsar_ai.openclaw.clawfence import (
+    ClawFencePolicy,
+    audit_session_event,
+    check_approval_required,
+    enforce_policy,
+    log_policy_violation,
+)
 from pulsar_ai.openclaw.nemoclaw import NemoClawManager, SandboxPolicy
 from pulsar_ai.openclaw.runtime import get_runtime
 from pulsar_ai.openclaw.trace_ingestion import OpenClawTraceIngester
 from pulsar_ai.storage.trace_store import TraceStore
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id, get_user_id
+from pulsar_ai.ui.permissions import require_permission
 
 logger = logging.getLogger(__name__)
 
@@ -103,16 +112,17 @@ def openclaw_health() -> dict[str, Any]:
 
 
 @router.get("/sessions")
-def list_sessions(status: str | None = None) -> dict[str, Any]:
+def list_sessions(request: Request, status: str | None = None) -> dict[str, Any]:
     """List all OpenClaw sessions."""
+    user_id = get_scoped_user_id(request)
     runtime = get_runtime()
-    sessions = runtime.list_sessions(status=status)
+    sessions = runtime.list_sessions(status=status, user_id=user_id)
     return {"sessions": [asdict(s) for s in sessions]}
 
 
 @router.post("/sessions")
 def create_session(body: SessionCreateRequest) -> dict[str, Any]:
-    """Create a new OpenClaw agent session."""
+    """Create a new OpenClaw agent session with governance checks."""
     runtime = get_runtime()
     config = {
         "name": body.name,
@@ -121,6 +131,10 @@ def create_session(body: SessionCreateRequest) -> dict[str, Any]:
         "system_prompt": body.system_prompt,
     }
     session = runtime.create_session(config)
+
+    # ClawFence: audit session creation
+    audit_session_event("create", session.session_id, details={"agent": body.name, "model": body.model})
+
     return asdict(session)
 
 
@@ -135,13 +149,39 @@ def get_session(session_id: str) -> dict[str, Any]:
 
 
 @router.post("/sessions/{session_id}/run")
-def run_session(session_id: str, body: SessionRunRequest) -> dict[str, Any]:
-    """Run agent in a session."""
+def run_session(session_id: str, body: SessionRunRequest, request: Request) -> dict[str, Any]:
+    """Run agent in a session with ClawFence governance."""
+    user_id = get_user_id(request)
     runtime = get_runtime()
     session = runtime.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    return runtime.run(session_id, body.input)
+
+    # ClawFence: check if approval is required
+    policy = ClawFencePolicy.from_dict(session.metadata.get("clawfence_policy", {}))
+    approval = check_approval_required(policy, session_id)
+    if approval and approval.get("status") == "pending":
+        return {
+            "status": "pending_approval",
+            "approval_id": approval["id"],
+            "message": "This session requires approval before execution.",
+        }
+
+    # ClawFence: audit execution
+    audit_session_event("run", session_id, details={"input_length": len(body.input)})
+
+    result = runtime.run(session_id, body.input, user_id=user_id)
+
+    # ClawFence: check token usage against policy
+    tokens_used = result.get("tokens", 0)
+    if policy.max_tokens > 0 and tokens_used > policy.max_tokens:
+        log_policy_violation(
+            session_id,
+            f"Token limit exceeded: {tokens_used}/{policy.max_tokens}",
+            details={"tokens_used": tokens_used, "limit": policy.max_tokens},
+        )
+
+    return result
 
 
 @router.delete("/sessions/{session_id}")
@@ -151,6 +191,7 @@ def stop_session(session_id: str) -> dict[str, Any]:
     success = runtime.stop_session(session_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
+    audit_session_event("stop", session_id)
     return {"status": "stopped", "session_id": session_id}
 
 
@@ -206,8 +247,8 @@ def list_deployments() -> dict[str, Any]:
 
 
 @router.post("/deployments")
-def create_deployment(body: DeploymentCreateRequest) -> dict[str, Any]:
-    """Deploy agent with sandbox policy."""
+def create_deployment(body: DeploymentCreateRequest, _=require_permission("workflows.execute")) -> dict[str, Any]:
+    """Deploy agent with sandbox policy and ClawFence governance."""
     manager = _get_manager()
     agent_config = {
         "name": body.name,
@@ -225,6 +266,10 @@ def create_deployment(body: DeploymentCreateRequest) -> dict[str, Any]:
         max_tokens=body.policy.max_tokens,
     )
     deployment = manager.deploy(agent_config, policy)
+    audit_session_event(
+        "deploy", deployment.session_id,
+        details={"deployment_id": deployment.deployment_id, "agent": body.name},
+    )
     return deployment.to_dict()
 
 
@@ -267,5 +312,9 @@ def update_deployment_policy(
     success = manager.update_policy(deployment_id, policy)
     if not success:
         raise HTTPException(status_code=404, detail="Deployment not found")
+    audit_session_event(
+        "policy_update", deployment_id,
+        details={"new_policy": body.policy.model_dump()},
+    )
     deployment = manager.get_deployment(deployment_id)
     return deployment.to_dict() if deployment else {"status": "updated"}

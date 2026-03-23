@@ -30,11 +30,12 @@ class AgentEvalStore:
 
             self._db = get_database()
 
-    def save_report(self, report: Any) -> str:
+    def save_report(self, report: Any, user_id: str = "") -> str:
         """Save an EvalReport to the database.
 
         Args:
             report: An EvalReport instance with results populated.
+            user_id: Owner user ID.
 
         Returns:
             Generated report ID.
@@ -53,8 +54,8 @@ class AgentEvalStore:
                 (id, suite_name, model_name, timestamp,
                  success_rate, avg_score, avg_latency_ms,
                  total_tokens, total_cost, tools_accuracy,
-                 results_json, by_tag_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 results_json, by_tag_json, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 report_id,
@@ -69,25 +70,31 @@ class AgentEvalStore:
                 report.tools_accuracy,
                 results_json,
                 by_tag_json,
+                user_id,
             ),
         )
         self._db.commit()
         logger.info("Saved eval report %s", report_id)
         return report_id
 
-    def get_report(self, report_id: str) -> dict[str, Any] | None:
+    def get_report(
+        self, report_id: str, user_id: str | None = None,
+    ) -> dict[str, Any] | None:
         """Get a single report by ID.
 
         Args:
             report_id: Primary key of the report.
+            user_id: Optional user filter.
 
         Returns:
             Report as dict with parsed JSON fields, or None.
         """
-        row = self._db.fetch_one(
-            "SELECT * FROM agent_eval_reports WHERE id = ?",
-            (report_id,),
-        )
+        sql = "SELECT * FROM agent_eval_reports WHERE id = ?"
+        params: list[Any] = [report_id]
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        row = self._db.fetch_one(sql, tuple(params))
         if row is None:
             return None
         return self._parse_report_row(row)
@@ -96,12 +103,14 @@ class AgentEvalStore:
         self,
         model_name: str | None = None,
         limit: int = 20,
+        user_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """List recent evaluation reports.
 
         Args:
             model_name: Optional filter by model name.
             limit: Maximum number of reports to return.
+            user_id: Optional user filter.
 
         Returns:
             List of report dicts ordered by timestamp desc.
@@ -109,6 +118,9 @@ class AgentEvalStore:
         clauses: list[str] = []
         params: list[Any] = []
 
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
         if model_name:
             clauses.append("model_name = ?")
             params.append(model_name)

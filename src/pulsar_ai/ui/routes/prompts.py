@@ -2,9 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id, get_user_id
 from pulsar_ai.prompts.store import PromptStore
 
 logger = logging.getLogger(__name__)
@@ -41,14 +42,16 @@ class TestPromptRequest(BaseModel):
 
 
 @router.get("")
-async def list_prompts(tag: str | None = None) -> list[dict]:
+async def list_prompts(request: Request, tag: str | None = None) -> list[dict]:
     """List all prompts, optionally filtered by tag."""
-    return _store.list_all(tag=tag)
+    uid = get_scoped_user_id(request)
+    return _store.list_all(tag=tag, user_id=uid)
 
 
 @router.post("")
-async def create_prompt(req: CreatePromptRequest) -> dict:
+async def create_prompt(request: Request, req: CreatePromptRequest) -> dict:
     """Create a new prompt."""
+    uid = get_user_id(request)
     return _store.create(
         name=req.name,
         system_prompt=req.system_prompt,
@@ -56,13 +59,15 @@ async def create_prompt(req: CreatePromptRequest) -> dict:
         model=req.model,
         parameters=req.parameters,
         tags=req.tags,
+        user_id=uid,
     )
 
 
 @router.get("/{prompt_id}")
-async def get_prompt(prompt_id: str) -> dict:
+async def get_prompt(request: Request, prompt_id: str) -> dict:
     """Get a prompt with all versions."""
-    p = _store.get(prompt_id)
+    uid = get_scoped_user_id(request)
+    p = _store.get(prompt_id, user_id=uid)
     if not p:
         raise HTTPException(status_code=404, detail="Prompt not found")
     return p
@@ -83,9 +88,10 @@ async def update_prompt(prompt_id: str, req: UpdatePromptRequest) -> dict:
 
 
 @router.delete("/{prompt_id}")
-async def delete_prompt(prompt_id: str) -> dict:
+async def delete_prompt(request: Request, prompt_id: str) -> dict:
     """Delete a prompt."""
-    if _store.delete(prompt_id):
+    uid = get_scoped_user_id(request)
+    if _store.delete(prompt_id, user_id=uid):
         return {"status": "deleted"}
     raise HTTPException(status_code=404, detail="Prompt not found")
 

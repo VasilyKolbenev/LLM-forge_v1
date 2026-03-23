@@ -9,10 +9,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from pulsar_ai.storage.trace_store import TraceStore
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id, get_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ class BuildDatasetRequest(BaseModel):
 
 @router.get("/traces")
 async def list_traces(
+    request: Request,
     date_from: str | None = None,
     date_to: str | None = None,
     model_name: str | None = None,
@@ -71,6 +73,7 @@ async def list_traces(
     Returns:
         Dict with traces list, total count, limit, and offset.
     """
+    user_id = get_scoped_user_id(request)
     traces = _store.list_traces(
         date_from=date_from or "",
         date_to=date_to or "",
@@ -80,6 +83,7 @@ async def list_traces(
         has_feedback=has_feedback,
         limit=limit,
         offset=offset,
+        user_id=user_id,
     )
     # Get total without pagination for the current filters
     all_traces = _store.list_traces(
@@ -91,6 +95,7 @@ async def list_traces(
         has_feedback=has_feedback,
         limit=10_000,
         offset=0,
+        user_id=user_id,
     )
     return {
         "traces": traces,
@@ -101,7 +106,7 @@ async def list_traces(
 
 
 @router.get("/traces/stats")
-async def get_trace_stats(days: int = 30) -> dict[str, Any]:
+async def get_trace_stats(request: Request, days: int = 30) -> dict[str, Any]:
     """Get trace statistics for dashboard.
 
     Args:
@@ -110,11 +115,12 @@ async def get_trace_stats(days: int = 30) -> dict[str, Any]:
     Returns:
         Statistics dict with totals, averages, and breakdowns.
     """
-    return _store.get_stats(days=days)
+    user_id = get_scoped_user_id(request)
+    return _store.get_stats(days=days, user_id=user_id)
 
 
 @router.get("/traces/{trace_id}")
-async def get_trace_detail(trace_id: str) -> dict[str, Any]:
+async def get_trace_detail(trace_id: str, request: Request) -> dict[str, Any]:
     """Get full trace with feedback.
 
     Args:
@@ -126,7 +132,8 @@ async def get_trace_detail(trace_id: str) -> dict[str, Any]:
     Raises:
         HTTPException: 404 if trace not found.
     """
-    trace = _store.get_trace(trace_id)
+    user_id = get_scoped_user_id(request)
+    trace = _store.get_trace(trace_id, user_id=user_id)
     if trace is None:
         raise HTTPException(status_code=404, detail="Trace not found")
     trace["feedback"] = _store.get_feedback(trace_id)

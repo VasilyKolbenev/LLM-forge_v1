@@ -80,8 +80,16 @@ def train_sft(config: dict, progress: Any = None) -> dict:
 
         hf_callbacks.append(make_hf_callback(progress))
 
+    # Check for multimodal mode
+    is_multimodal = (
+        config.get("task_type") == "multimodal"
+        or config.get("vision", {}).get("enabled", False)
+    )
+
     with track_experiment(config, task="sft") as tracker:
-        if use_unsloth and not fsdp:
+        if is_multimodal:
+            results = _train_sft_multimodal(config, callbacks=hf_callbacks)
+        elif use_unsloth and not fsdp:
             results = _train_sft_unsloth(config, callbacks=hf_callbacks)
         else:
             results = _train_sft_hf(config, callbacks=hf_callbacks)
@@ -485,4 +493,171 @@ def _auto_eval(
         results.get("overall_accuracy", 0) * 100,
         results.get("json_parse_rate", 0) * 100,
     )
+    return results
+
+
+# ============================================================
+# MULTIMODAL SFT TRAINING
+# ============================================================
+
+
+def _train_sft_multimodal(
+    config: dict,
+    callbacks: list | None = None,
+) -> dict:
+    """Train a vision-language model with image-text SFT.
+
+    Uses HuggingFace Transformers + AutoProcessor for multimodal training.
+    Unsloth is not supported for VL models.
+
+    Args:
+        config: Full config dict with vision section.
+        callbacks: Optional HF TrainerCallbacks.
+
+    Returns:
+        Dict with training results.
+    """
+    import torch
+    from peft import LoraConfig, get_peft_model, TaskType
+    from transformers import TrainingArguments, Trainer
+
+    from pulsar_ai.model_loader import load_multimodal_model
+    from pulsar_ai.data.loader import load_multimodal_dataset_from_config
+    from pulsar_ai.data.formatter import build_multimodal_chat_examples
+    from pulsar_ai.data.splitter import split_dataset
+
+    model_config = config.get("model", {})
+    training_config = config.get("training", {})
+    vision_config = config.get("vision", {})
+    lora_config = config.get("lora", {})
+    ds_config = config.get("dataset", {})
+
+    model_name = model_config.get("name", "")
+    output_dir = config.get("output", {}).get("dir", "./outputs/multimodal-sft")
+    max_seq_length = training_config.get("max_seq_length", 2048)
+
+    logger.info("Starting multimodal SFT: model=%s", model_name)
+
+    # 1. Load model + processor
+    model, processor, tokenizer = load_multimodal_model(config, model_name, trainable=True)
+
+    # 2. Freeze vision encoder if configured
+    freeze_vision = vision_config.get("freeze_vision_encoder", True)
+    if freeze_vision:
+        frozen_count = 0
+        for name, param in model.named_parameters():
+            if any(kw in name.lower() for kw in ("visual", "vision", "vit", "image_encoder")):
+                param.requires_grad = False
+                frozen_count += 1
+        logger.info("Froze %d vision encoder parameters", frozen_count)
+
+    # 3. Apply LoRA
+    target_modules = lora_config.get("target_modules", [
+        "q_proj", "k_proj", "v_proj", "o_proj",
+        "gate_proj", "up_proj", "down_proj",
+    ])
+
+    peft_config = LoraConfig(
+        r=lora_config.get("r", 16),
+        lora_alpha=lora_config.get("lora_alpha", 16),
+        target_modules=target_modules,
+        lora_dropout=lora_config.get("lora_dropout", 0),
+        bias=lora_config.get("bias", "none"),
+        task_type=TaskType.CAUSAL_LM,
+    )
+    model = get_peft_model(model, peft_config)
+    model.print_trainable_parameters()
+
+    # 4. Load and prepare dataset
+    df = load_multimodal_dataset_from_config(config)
+
+    system_prompt = ds_config.get("system_prompt", "You are a helpful visual assistant.")
+    image_col = ds_config.get("image_column", "image")
+    convs_col = ds_config.get("conversations_column", "conversations")
+    text_col = ds_config.get("text_column")
+    label_cols = ds_config.get("label_columns")
+
+    # Split
+    test_size = training_config.get("test_size", 0.1)
+    splits = split_dataset(df, test_size=test_size)
+    train_df = splits["train"]
+    test_df = splits["test"]
+
+    # Build multimodal examples
+    train_examples = build_multimodal_chat_examples(
+        train_df, system_prompt=system_prompt,
+        image_column=image_col, conversations_column=convs_col,
+        text_column=text_col, label_columns=label_cols,
+    )
+
+    logger.info("Prepared %d multimodal training examples", len(train_examples))
+
+    # 5. Format for training using processor
+    from datasets import Dataset as HFDataset
+
+    train_texts = []
+    for ex in train_examples:
+        text = processor.apply_chat_template(
+            ex["messages"], tokenize=False, add_generation_prompt=False,
+        )
+        train_texts.append(text)
+
+    train_dataset = HFDataset.from_dict({"text": train_texts})
+
+    # 6. Training arguments
+    training_args = TrainingArguments(
+        output_dir=output_dir,
+        num_train_epochs=training_config.get("epochs", 3),
+        per_device_train_batch_size=training_config.get("batch_size", 1),
+        gradient_accumulation_steps=training_config.get("gradient_accumulation", 16),
+        learning_rate=float(training_config.get("learning_rate", 2e-4)),
+        warmup_steps=training_config.get("warmup_steps", 10),
+        logging_steps=training_config.get("logging_steps", 10),
+        save_steps=training_config.get("save_steps", 500),
+        save_total_limit=training_config.get("save_total_limit", 3),
+        bf16=True,
+        gradient_checkpointing=config.get("gradient_checkpointing", True),
+        optim=training_config.get("optimizer", "adamw_8bit"),
+        report_to="none",
+        remove_unused_columns=False,
+        dataloader_pin_memory=False,
+    )
+
+    # 7. Create trainer
+    from trl import SFTTrainer, SFTConfig
+
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=train_dataset,
+        args=training_args,
+        tokenizer=tokenizer,
+        packing=False,  # Must be False for multimodal
+        max_seq_length=max_seq_length,
+        dataset_text_field="text",
+        callbacks=callbacks,
+    )
+
+    # 8. Train
+    logger.info("Starting multimodal SFT training...")
+    train_result = trainer.train()
+
+    # 9. Save
+    trainer.save_model(output_dir)
+    logger.info("Multimodal SFT model saved to %s", output_dir)
+
+    # Collect results
+    metrics = train_result.metrics
+    results = {
+        "training_loss": metrics.get("train_loss", 0),
+        "global_steps": metrics.get("train_steps", 0),
+        "adapter_dir": output_dir,
+        "task_type": "multimodal",
+    }
+
+    # Report peak VRAM if available
+    if torch.cuda.is_available():
+        vram = torch.cuda.max_memory_allocated() / (1024**3)
+        results["vram_peak_gb"] = round(vram, 2)
+
+    logger.info("Multimodal SFT complete: loss=%.4f, steps=%d", results["training_loss"], results["global_steps"])
     return results

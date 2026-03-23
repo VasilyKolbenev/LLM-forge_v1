@@ -12,16 +12,64 @@ Enable demo via PULSAR_STAND_MODE=demo.
 
 import hashlib
 import logging
+import os
 import secrets
 import uuid
 from datetime import datetime
 
-from fastapi import Request
+from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from pulsar_ai.storage.database import Database, get_database
 from pulsar_ai.ui.jwt_utils import verify_token
+
+_ANONYMOUS_USER: dict = {"id": "__anonymous__", "email": "", "role": "admin", "name": "Anonymous"}
+
+
+def _is_auth_enabled() -> bool:
+    """Check whether JWT/API-key auth is turned on."""
+    return os.getenv("PULSAR_AUTH_ENABLED", "").lower() in ("1", "true", "yes")
+
+
+def get_current_user(request: Request) -> dict:
+    """Extract the authenticated user from request state.
+
+    When auth is disabled returns a sentinel anonymous user with admin role
+    so that all data is visible (backward-compatible single-user mode).
+
+    Args:
+        request: FastAPI request.
+
+    Returns:
+        User dict with at least ``id``, ``email``, ``role`` keys.
+
+    Raises:
+        HTTPException: 401 if auth is enabled but no user is attached.
+    """
+    user = getattr(request.state, "user", None)
+    if user:
+        return user
+    if not _is_auth_enabled():
+        return _ANONYMOUS_USER
+    raise HTTPException(status_code=401, detail="Authentication required")
+
+
+def get_user_id(request: Request) -> str:
+    """Shortcut — return only the user ID string."""
+    return get_current_user(request)["id"]
+
+
+def get_scoped_user_id(request: Request) -> str | None:
+    """Return user_id for data scoping, or None for admins (see all).
+
+    Admins get ``None`` which stores interpret as "skip user_id filter".
+    Regular users get their actual ID for strict isolation.
+    """
+    user = get_current_user(request)
+    if user.get("role") == "admin":
+        return None
+    return user["id"]
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +80,10 @@ PUBLIC_PATHS = frozenset(
         "/api/v1/auth/login",
         "/api/v1/auth/register",
         "/api/v1/auth/refresh",
+        "/api/v1/auth/mfa/verify",
+        "/api/v1/auth/oidc/authorize",
+        "/api/v1/auth/oidc/callback",
+        "/api/v1/auth/oidc/config",
         "/docs",
         "/openapi.json",
         "/redoc",
@@ -97,11 +149,12 @@ class ApiKeyStore:
 
     # ── Key CRUD ──────────────────────────────────────────────────
 
-    def generate_key(self, name: str = "default") -> str:
+    def generate_key(self, name: str = "default", user_id: str = "") -> str:
         """Generate a new API key, store its hash, return plaintext.
 
         Args:
             name: Human-readable name for the key.
+            user_id: Owner user ID for key scoping.
 
         Returns:
             Plaintext API key (only shown once).
@@ -113,10 +166,10 @@ class ApiKeyStore:
 
         self._db.execute(
             """
-            INSERT INTO api_keys (id, name, key_hash, created_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO api_keys (id, name, key_hash, created_at, user_id)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (key_id, name, key_hash, now_iso),
+            (key_id, name, key_hash, now_iso, user_id),
         )
         self._log_event(key_id, "created")
         self._db.commit()
@@ -152,38 +205,51 @@ class ApiKeyStore:
         self._db.commit()
         return False
 
-    def list_keys(self) -> list[dict]:
+    def list_keys(self, user_id: str | None = None) -> list[dict]:
         """List key metadata (names only, no hashes).
+
+        Args:
+            user_id: When provided, only return keys owned by this user.
 
         Returns:
             List of dicts with 'name' field.
         """
-        rows = self._db.fetch_all("SELECT name FROM api_keys WHERE revoked = 0")
+        query = "SELECT name FROM api_keys WHERE revoked = 0"
+        params: tuple = ()
+        if user_id is not None:
+            query += " AND user_id = ?"
+            params = (user_id,)
+        rows = self._db.fetch_all(query, params)
         return [{"name": r["name"]} for r in rows]
 
-    def revoke(self, name: str) -> bool:
+    def revoke(self, name: str, user_id: str | None = None) -> bool:
         """Revoke all keys with a given name.
 
         Args:
             name: Key name to revoke.
+            user_id: When provided, only revoke keys owned by this user.
 
         Returns:
             True if any keys were revoked.
         """
         # Find key IDs before revoking (for audit trail)
-        rows = self._db.fetch_all(
-            "SELECT id FROM api_keys WHERE name = ? AND revoked = 0",
-            (name,),
-        )
+        find_query = "SELECT id FROM api_keys WHERE name = ? AND revoked = 0"
+        find_params: tuple = (name,)
+        if user_id is not None:
+            find_query += " AND user_id = ?"
+            find_params = (name, user_id)
+        rows = self._db.fetch_all(find_query, find_params)
+
         now_iso = datetime.now().isoformat()
-        cursor = self._db.execute(
-            """
-            UPDATE api_keys
-            SET revoked = 1, revoked_at = ?
-            WHERE name = ? AND revoked = 0
-            """,
-            (now_iso, name),
+        update_query = (
+            "UPDATE api_keys SET revoked = 1, revoked_at = ? "
+            "WHERE name = ? AND revoked = 0"
         )
+        update_params: tuple = (now_iso, name)
+        if user_id is not None:
+            update_query += " AND user_id = ?"
+            update_params = (now_iso, name, user_id)
+        cursor = self._db.execute(update_query, update_params)
         for row in rows:
             self._log_event(row["id"], "revoked")
         self._db.commit()
@@ -222,6 +288,10 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             token = auth[7:]
+            # verify_token checks expiry, type, and blacklist status.
+            # Returns None for invalid/expired/blacklisted tokens AND
+            # non-JWT strings (API keys), so we pass through on None
+            # to let ApiKeyMiddleware handle fallback auth.
             payload = verify_token(token, expected_type="access")
             if payload:
                 # Attach user info for downstream routes

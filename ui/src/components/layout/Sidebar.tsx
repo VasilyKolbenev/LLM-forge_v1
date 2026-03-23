@@ -13,8 +13,11 @@ import {
   GitBranch,
   ClipboardCheck,
   Cpu,
+  Gauge,
   LogOut,
   User,
+  ScanSearch,
+  Shield,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ResourceBar } from "@/components/metrics/ResourceBar"
@@ -31,10 +34,11 @@ const links = [
   { to: "/compute", icon: Server, label: "Compute" },
   { to: "/prompts", icon: FileText, label: "Prompt Lab" },
   { to: "/agent", icon: MessageSquare, label: "Agent Chat" },
-  { to: "/traces", icon: Activity, label: "Traces" },
+  { to: "/traces", icon: ScanSearch, label: "Traces" },
   { to: "/agent-eval", icon: ClipboardCheck, label: "Agent Eval" },
   { to: "/openclaw", icon: Cpu, label: "OpenClaw" },
   { to: "/lifecycle", icon: GitBranch, label: "Lifecycle" },
+  { to: "/benchmarks", icon: Gauge, label: "Benchmarks" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ]
 
@@ -78,6 +82,22 @@ export function Sidebar() {
             {label}
           </NavLink>
         ))}
+        {user?.role === "admin" && (
+          <NavLink
+            to="/admin"
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+                isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              )
+            }
+          >
+            <Shield size={18} />
+            Admin
+          </NavLink>
+        )}
       </nav>
       <div className="border-t border-border pt-2 pb-2">
         <ResourceBar metrics={current} connected={connected} />

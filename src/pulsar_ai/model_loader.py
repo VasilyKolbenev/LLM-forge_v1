@@ -223,6 +223,61 @@ def _load_hf_base(config: dict, model_name: str) -> tuple[Any, Any]:
     return model, tokenizer
 
 
+def load_multimodal_model(
+    config: dict,
+    model_path: str,
+    trainable: bool = False,
+) -> tuple[Any, Any, Any]:
+    """Load a vision-language model with processor.
+
+    Always uses the HuggingFace path (Unsloth does not support VL models).
+    Returns a triple of (model, processor, tokenizer).
+
+    Args:
+        config: Full resolved config dict.
+        model_path: Model name or path.
+        trainable: Whether to set model to training mode.
+
+    Returns:
+        Tuple of (model, processor, tokenizer).
+    """
+    import torch
+    from transformers import AutoProcessor
+
+    model_config = config.get("model", {})
+    model_name = model_config.get("name", model_path)
+
+    # Load processor (bundles tokenizer + image processor)
+    processor = AutoProcessor.from_pretrained(
+        model_name, trust_remote_code=True,
+    )
+
+    # Load model with correct class (ConditionalGeneration)
+    bnb_config = _get_bnb_config(config)
+    model_cls = _resolve_model_class(model_name)
+
+    model = model_cls.from_pretrained(
+        model_name,
+        quantization_config=bnb_config,
+        device_map="auto" if not config.get("fsdp_enabled") else None,
+        torch_dtype=torch.bfloat16,
+        trust_remote_code=True,
+    )
+
+    # Extract tokenizer from processor
+    tokenizer = processor.tokenizer if hasattr(processor, "tokenizer") else processor
+    _ensure_pad_token(tokenizer)
+
+    if not trainable:
+        model.eval()
+
+    logger.info(
+        "Loaded multimodal model %s (class=%s, trainable=%s)",
+        model_name, model_cls.__name__, trainable,
+    )
+    return model, processor, tokenizer
+
+
 def _get_bnb_config(config: dict) -> Any:
     """Build BitsAndBytesConfig if load_in_4bit is enabled.
 

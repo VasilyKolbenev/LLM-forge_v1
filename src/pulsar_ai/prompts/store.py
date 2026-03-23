@@ -71,6 +71,7 @@ class PromptStore:
         model: str = "",
         parameters: dict[str, Any] | None = None,
         tags: list[str] | None = None,
+        user_id: str = "",
     ) -> dict:
         """Create a new prompt with version 1.
 
@@ -93,8 +94,8 @@ class PromptStore:
             """
             INSERT INTO prompts
                 (id, name, description, current_version, tags,
-                 created_at, updated_at)
-            VALUES (?, ?, ?, 1, ?, ?, ?)
+                 created_at, updated_at, user_id)
+            VALUES (?, ?, ?, 1, ?, ?, ?, ?)
             """,
             (
                 prompt_id,
@@ -103,6 +104,7 @@ class PromptStore:
                 json.dumps(tags or [], ensure_ascii=False),
                 now_iso,
                 now_iso,
+                user_id,
             ),
         )
 
@@ -126,30 +128,44 @@ class PromptStore:
         logger.info("Created prompt %s: %s", prompt_id, name)
         return self.get(prompt_id)  # type: ignore[return-value]
 
-    def get(self, prompt_id: str) -> dict | None:
+    def get(self, prompt_id: str, user_id: str | None = None) -> dict | None:
         """Get a prompt by ID with all versions.
 
         Args:
             prompt_id: Prompt ID.
+            user_id: Optional ownership check.
 
         Returns:
             Prompt dict or None.
         """
-        row = self._db.fetch_one("SELECT * FROM prompts WHERE id = ?", (prompt_id,))
+        clauses = ["id = ?"]
+        params: list[str] = [prompt_id]
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
+        where = " AND ".join(clauses)
+        row = self._db.fetch_one(f"SELECT * FROM prompts WHERE {where}", tuple(params))
         if row is None:
             return None
         return self._row_to_dict(row)
 
-    def list_all(self, tag: str | None = None) -> list[dict]:
-        """List all prompts, optionally filtered by tag.
+    def list_all(self, tag: str | None = None, user_id: str | None = None) -> list[dict]:
+        """List all prompts, optionally filtered by tag and/or user.
 
         Args:
             tag: Optional tag to filter by.
+            user_id: Optional user ownership filter.
 
         Returns:
             List of prompt dicts (newest first).
         """
-        rows = self._db.fetch_all("SELECT * FROM prompts ORDER BY updated_at DESC")
+        if user_id is not None:
+            rows = self._db.fetch_all(
+                "SELECT * FROM prompts WHERE user_id = ? ORDER BY updated_at DESC",
+                (user_id,),
+            )
+        else:
+            rows = self._db.fetch_all("SELECT * FROM prompts ORDER BY updated_at DESC")
         prompts = [self._row_to_dict(r) for r in rows]
         if tag:
             prompts = [p for p in prompts if tag in p.get("tags", [])]
@@ -341,16 +357,23 @@ class PromptStore:
             "variables_removed": [v for v in ver1["variables"] if v not in ver2["variables"]],
         }
 
-    def delete(self, prompt_id: str) -> bool:
+    def delete(self, prompt_id: str, user_id: str | None = None) -> bool:
         """Delete a prompt and all its versions (cascade).
 
         Args:
             prompt_id: Prompt ID.
+            user_id: Optional ownership check.
 
         Returns:
             True if deleted, False if not found.
         """
-        cursor = self._db.execute("DELETE FROM prompts WHERE id = ?", (prompt_id,))
+        clauses = ["id = ?"]
+        params: list[str] = [prompt_id]
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
+        where = " AND ".join(clauses)
+        cursor = self._db.execute(f"DELETE FROM prompts WHERE {where}", tuple(params))
         self._db.commit()
         return cursor.rowcount > 0
 

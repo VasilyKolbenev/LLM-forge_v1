@@ -136,6 +136,60 @@ def _load_from_huggingface(ds_config: dict) -> pd.DataFrame:
     return df
 
 
+def load_multimodal_dataset_from_config(config: dict) -> pd.DataFrame:
+    """Load a multimodal dataset with image references.
+
+    Same as load_dataset_from_config but preserves image columns
+    and resolves relative image paths.
+
+    Args:
+        config: Full config dict with 'dataset' section.
+
+    Returns:
+        Pandas DataFrame with image and text columns.
+    """
+    from pulsar_ai.data.image_loader import resolve_image_column, validate_images
+
+    ds_config = config.get("dataset", {})
+    path = ds_config.get("path")
+    if not path:
+        raise ValueError("dataset.path is required in config")
+
+    fmt = ds_config.get("format", _detect_format(path))
+    logger.info("Loading multimodal dataset from %s (format=%s)", path, fmt)
+
+    if fmt == "csv":
+        df = pd.read_csv(path)
+    elif fmt == "jsonl":
+        df = pd.read_json(path, lines=True)
+    elif fmt == "parquet":
+        df = pd.read_parquet(path)
+    else:
+        raise ValueError(f"Unsupported format for multimodal: {fmt}")
+
+    # Detect image column
+    image_col = ds_config.get("image_column") or resolve_image_column(df)
+    if image_col is None:
+        logger.warning("No image column detected — falling back to text-only loading")
+        return load_dataset_from_config(config)
+
+    # Resolve relative paths
+    base_dir = ds_config.get("image_base_dir", str(Path(path).parent))
+
+    # Validate images exist
+    df = validate_images(df, image_col, base_dir=base_dir)
+
+    # Resolve relative paths in dataframe
+    for idx in df.index:
+        source = str(df.at[idx, image_col]).strip()
+        if source and not source.startswith("http") and not Path(source).is_absolute():
+            df.at[idx, image_col] = str(Path(base_dir) / source)
+
+    df = df.drop_duplicates().reset_index(drop=True)
+    logger.info("Loaded %d multimodal samples (image_col=%s)", len(df), image_col)
+    return df
+
+
 def dataframe_to_hf_dataset(
     df: pd.DataFrame,
     text_field: str = "text",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { api } from "@/api/client"
 import { Trash2, GitCompare, FlaskConical } from "lucide-react"
@@ -21,26 +21,36 @@ export function Experiments() {
   const [compareData, setCompareData] = useState<Record<string, unknown> | null>(null)
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
 
+  const detailRef = useRef(detail)
+  detailRef.current = detail
+
+  const hasRunningRef = useRef(false)
+
   const load = () => {
     api.getExperiments().then(setExperiments).catch(() => {})
   }
 
   useEffect(load, [])
 
-  // Auto-refresh list and detail every 3s while any experiment is running
+  // Track whether polling is needed
   useEffect(() => {
-    const hasRunning = experiments.some((e) => e.status === "running")
-    const detailRunning = detail && detail.status === "running"
-    if (!hasRunning && !detailRunning) return
+    const listRunning = experiments.some((e) => e.status === "running")
+    const detailRunning = detail?.status === "running"
+    hasRunningRef.current = listRunning || !!detailRunning
+  }, [experiments, detail])
 
+  // Single interval — set up once, reads current state from refs
+  useEffect(() => {
     const timer = setInterval(() => {
+      if (!hasRunningRef.current) return
       load()
-      if (detail && detail.status === "running") {
-        api.getExperiment(String(detail.id)).then(setDetail).catch(() => {})
+      const d = detailRef.current
+      if (d && d.status === "running") {
+        api.getExperiment(String(d.id)).then(setDetail).catch(() => {})
       }
     }, 3000)
     return () => clearInterval(timer)
-  }, [experiments, detail])
+  }, [])
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -62,13 +72,17 @@ export function Experiments() {
   }
 
   const handleDelete = async (id: string) => {
-    await api.deleteExperiment(id)
-    setSelected((prev) => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-    load()
+    try {
+      await api.deleteExperiment(id)
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+      load()
+    } catch {
+      // deletion failed — keep current state
+    }
   }
 
   const handleDetail = async (id: string) => {

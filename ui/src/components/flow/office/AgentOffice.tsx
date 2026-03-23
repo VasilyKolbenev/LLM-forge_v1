@@ -1,35 +1,21 @@
-import { useMemo } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Canvas } from "@react-three/fiber"
 import type { Node } from "@xyflow/react"
-import { OfficeGrid } from "./OfficeGrid"
-import { Desk } from "./Desk"
 import { PERSONAS } from "../personas"
 import type { CustomPersona } from "../PersonaEditor"
 import type { OfficeEnvironment } from "../EnvironmentPicker"
 import { EnvironmentPicker } from "../EnvironmentPicker"
+import { Scene } from "./three/Scene"
+import { gridTo3D, CHAR_OFFSET as CHAR_OFFSET_3D } from "./three/constants"
+import type { AgentData3D, WalkerData3D, CharacterState } from "./three/types"
 
-const DEFAULT_PERSONA = {
-  name: "Node",
-  role: "Generic",
-  category: "observer" as const,
-  color: "#6d5dfc",
+const DEFAULT_PERSONA = { name: "Node", role: "Generic", category: "observer" as const, color: "#6d5dfc" }
+
+function colorToHex(color: string): number {
+  return parseInt(color.replace("#", ""), 16)
 }
 
-const DESKS_PER_ROW = 4
-const H_SPACING = 200
-const V_SPACING = 120
-
-function toIsometric(gridX: number, gridY: number): { x: number; y: number } {
-  return {
-    x: (gridX - gridY) * (H_SPACING / 2),
-    y: (gridX + gridY) * (V_SPACING / 2),
-  }
-}
-
-interface NodeReplayStatus {
-  status: "idle" | "running" | "done" | "error"
-  message?: string
-  progress?: number
-}
+interface NodeReplayStatus { status: "idle" | "running" | "done" | "error"; message?: string; progress?: number }
 
 interface AgentOfficeProps {
   nodes: Node[]
@@ -42,135 +28,207 @@ interface AgentOfficeProps {
   replayNodeStatuses?: Record<string, NodeReplayStatus>
 }
 
-function getStatusMessage(
-  persona: { idleMessage: string; workingMessages: string[]; doneMessage: string; errorMessage: string },
-  status: string,
-): string | undefined {
-  if (status === "running") {
-    const msgs = persona.workingMessages
-    return msgs[Math.floor(Math.random() * msgs.length)]
-  }
-  if (status === "done") return persona.doneMessage
-  if (status === "error") return persona.errorMessage
-  return undefined
+function mapState(status: "idle" | "running" | "done" | "error"): CharacterState {
+  return status === "running" ? "working"
+    : status === "done" ? "celebrating"
+    : status === "error" ? "error"
+    : "idle"
+}
+
+interface Walker {
+  id: string; agentIdx: number; targetIdx: number
+  name: string; color: string; category: string
+  fromX: number; fromZ: number; toX: number; toZ: number
+  phase: "going" | "delivering" | "returning"; progress: number
 }
 
 export function AgentOffice({
-  nodes,
-  selectedNodeId,
-  onSelectNode,
-  onDoubleClickNode,
-  customPersonas = {},
-  environment = "modern-office",
-  onEnvironmentChange,
-  replayNodeStatuses,
+  nodes, selectedNodeId, onSelectNode, onDoubleClickNode,
+  customPersonas = {}, environment = "modern-office",
+  onEnvironmentChange, replayNodeStatuses,
 }: AgentOfficeProps) {
-  const desks = useMemo(() => {
+
+  // ============================================================
+  // AGENTS DATA (same logic as before, but 3D coordinates)
+  // ============================================================
+  const agents = useMemo((): AgentData3D[] => {
     return nodes.map((node, index) => {
       const personaKey = String(node.type || "")
-      const basePersona = PERSONAS[personaKey] ?? DEFAULT_PERSONA
+      const base = PERSONAS[personaKey] ?? DEFAULT_PERSONA
       const custom = customPersonas[node.id]
-
-      const mergedName = custom?.name ?? basePersona.name
-      const mergedRole = custom?.role ?? basePersona.role
-      const mergedColor = custom?.avatarColor ?? basePersona.color
-      const mergedCategory = basePersona.category
-      const avatarEmoji = custom?.avatarEmoji
-
       const data = (node.data ?? {}) as Record<string, unknown>
       const replayInfo = replayNodeStatuses?.[node.id]
-      const status = replayInfo
-        ? replayInfo.status
-        : (String(data.status || "idle") as "idle" | "running" | "done" | "error")
-
-      const gridX = index % DESKS_PER_ROW
-      const gridY = Math.floor(index / DESKS_PER_ROW)
-      const iso = toIsometric(gridX, gridY)
-
-      const fullPersona = PERSONAS[personaKey]
-      const messagePersona = fullPersona
-        ? {
-            idleMessage: custom?.idleMessage ?? fullPersona.idleMessage,
-            workingMessages: custom?.workingMessages ?? fullPersona.workingMessages,
-            doneMessage: custom?.doneMessage ?? fullPersona.doneMessage,
-            errorMessage: custom?.errorMessage ?? fullPersona.errorMessage,
-          }
-        : undefined
-      const message = replayInfo?.message
-        ?? (messagePersona ? getStatusMessage(messagePersona, status) : undefined)
-
+      const status = replayInfo?.status ?? (String(data.status || "idle") as "idle" | "running" | "done" | "error")
+      const pos = gridTo3D(index, nodes.length)
+      const color = custom?.avatarColor ?? base.color
       return {
-        id: node.id,
-        x: iso.x,
-        y: iso.y,
-        agentName: mergedName,
-        agentRole: mergedRole,
-        color: mergedColor,
-        status,
-        category: mergedCategory,
+        id: node.id, index,
+        worldX: pos.x, worldY: pos.y, worldZ: pos.z,
+        name: custom?.name ?? base.name,
+        color,
+        colorHex: colorToHex(color),
+        category: base.category,
+        characterState: mapState(status),
         selected: node.id === selectedNodeId,
-        message: status !== "idle" ? message : undefined,
-        index,
-        avatarEmoji,
       }
     })
   }, [nodes, selectedNodeId, customPersonas, replayNodeStatuses])
 
-  const viewBox = useMemo(() => {
-    if (desks.length === 0) {
-      return "-400 -200 800 600"
-    }
-    const xs = desks.map((d) => d.x)
-    const ys = desks.map((d) => d.y)
-    const minX = Math.min(...xs) - 160
-    const maxX = Math.max(...xs) + 160
-    const minY = Math.min(...ys) - 140
-    const maxY = Math.max(...ys) + 140
-    return `${minX} ${minY} ${maxX - minX} ${maxY - minY}`
-  }, [desks])
+  // ============================================================
+  // DEMO MODE
+  // ============================================================
+  const [demoActive, setDemoActive] = useState(false)
+  const [demoOverrides, setDemoOverrides] = useState<Record<string, CharacterState>>({})
+  const [walkers, setWalkers] = useState<Walker[]>([])
+  const demoTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const walkingAgentIndices = useMemo(() => new Set(walkers.map((w) => w.agentIdx)), [walkers])
+
+  const startDemo = useCallback(() => {
+    setDemoActive(true)
+    let step = 0
+    const ids = agents.map((a) => a.id)
+    if (ids.length === 0) return
+
+    demoTimer.current = setInterval(() => {
+      step++
+      const overrides: Record<string, CharacterState> = {}
+      for (let i = 0; i < ids.length; i++) {
+        const s = step - i * 5
+        if (s < 0) overrides[ids[i]] = "idle"
+        else if (s < 4) overrides[ids[i]] = "working"
+        else if (s < 5) overrides[ids[i]] = "celebrating"
+        else if (s === 8 && i === 2) overrides[ids[i]] = "error"
+        else overrides[ids[i]] = "idle"
+      }
+      setDemoOverrides(overrides)
+
+      // Spawn walkers
+      setWalkers((prev) => {
+        const next = [...prev]
+        for (let i = 0; i < ids.length - 1; i++) {
+          const s = step - i * 5
+          if (s === 5 && !next.find((w) => w.id === `w-${step}-${i}`)) {
+            const from = agents[i], to = agents[i + 1]
+            if (from && to) {
+              next.push({
+                id: `w-${step}-${i}`, agentIdx: i, targetIdx: i + 1,
+                name: from.name, color: from.color, category: from.category,
+                fromX: from.worldX + CHAR_OFFSET_3D.x,
+                fromZ: from.worldZ + CHAR_OFFSET_3D.z,
+                toX: to.worldX + CHAR_OFFSET_3D.x + 0.5,
+                toZ: to.worldZ + CHAR_OFFSET_3D.z + 0.3,
+                phase: "going", progress: 0,
+              })
+            }
+          }
+        }
+        return next.map((w) => {
+          const spd = 0.07
+          if (w.phase === "going") {
+            const p = Math.min(w.progress + spd, 1)
+            return p >= 1 ? { ...w, phase: "delivering" as const, progress: 0 } : { ...w, progress: p }
+          }
+          if (w.phase === "delivering") {
+            const p = w.progress + 0.12
+            return p >= 1 ? { ...w, phase: "returning" as const, progress: 0 } : { ...w, progress: p }
+          }
+          const p = Math.min(w.progress + spd, 1)
+          return p >= 1 ? null as unknown as Walker : { ...w, progress: p }
+        }).filter(Boolean)
+      })
+
+      if (step > ids.length * 5 + 12) { step = 0; setWalkers([]) }
+    }, 500)
+  }, [agents])
+
+  const stopDemo = useCallback(() => {
+    setDemoActive(false); setDemoOverrides({}); setWalkers([])
+    if (demoTimer.current) clearInterval(demoTimer.current)
+  }, [])
+
+  useEffect(() => () => { if (demoTimer.current) clearInterval(demoTimer.current) }, [])
+
+  // ============================================================
+  // EFFECTIVE AGENTS WITH DEMO OVERRIDES
+  // ============================================================
+  const effectiveAgents = useMemo((): AgentData3D[] => {
+    if (!demoActive) return agents
+    return agents.map((a) => ({
+      ...a,
+      characterState: demoOverrides[a.id] ?? a.characterState,
+    }))
+  }, [agents, demoActive, demoOverrides])
+
+  // ============================================================
+  // WALKER 3D DATA
+  // ============================================================
+  const walkers3D = useMemo((): WalkerData3D[] => {
+    return walkers.map((w) => {
+      let wx: number, wz: number, state: CharacterState
+      if (w.phase === "going") {
+        wx = w.fromX + (w.toX - w.fromX) * w.progress
+        wz = w.fromZ + (w.toZ - w.fromZ) * w.progress
+        state = "walking"
+      } else if (w.phase === "delivering") {
+        wx = w.toX; wz = w.toZ; state = "delivering"
+      } else {
+        wx = w.toX + (w.fromX - w.toX) * w.progress
+        wz = w.toZ + (w.fromZ - w.toZ) * w.progress
+        state = "walking"
+      }
+      return {
+        id: w.id, agentIdx: w.agentIdx, targetIdx: w.targetIdx,
+        name: w.name, color: w.color, colorHex: colorToHex(w.color),
+        category: w.category, state,
+        x: wx, y: 0, z: wz,
+        phase: w.phase,
+      }
+    })
+  }, [walkers])
 
   return (
-    <div className="flex-1 h-full bg-[#0a0a0b] overflow-hidden relative">
-      {/* Environment picker */}
+    <div className="w-full h-full bg-[#050810] overflow-hidden relative">
+      {/* HTML OVERLAY — Demo button */}
+      <div className="absolute top-3 left-3 z-10 flex gap-2">
+        <button onClick={demoActive ? stopDemo : startDemo}
+          className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+            demoActive ? "bg-red-500/20 text-red-400 border border-red-500/30" : "bg-primary/20 text-primary border border-primary/30"
+          }`}>
+          {demoActive ? "⏹ Stop Demo" : "▶ Run Demo"}
+        </button>
+      </div>
+
+      {/* HTML OVERLAY — Environment picker */}
       {onEnvironmentChange && (
         <div className="absolute top-3 right-3 z-10">
           <EnvironmentPicker environment={environment} onChange={onEnvironmentChange} />
         </div>
       )}
 
-      <svg
-        width="100%"
-        height="100%"
-        viewBox={viewBox}
-        preserveAspectRatio="xMidYMid meet"
-        className="w-full h-full"
+      {/* 3D CANVAS */}
+      <Canvas
+        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+        dpr={[1, 2]}
+        style={{ width: "100%", height: "100%" }}
+        onPointerMissed={() => {}}
       >
-        <OfficeGrid environment={environment} />
-        {desks.map((desk) => (
-          <Desk
-            key={desk.id}
-            x={desk.x}
-            y={desk.y}
-            agentName={desk.agentName}
-            agentRole={desk.agentRole}
-            color={desk.color}
-            status={desk.status}
-            category={desk.category}
-            selected={desk.selected}
-            onClick={() => onSelectNode(desk.id)}
-            onDoubleClick={onDoubleClickNode ? () => onDoubleClickNode(desk.id) : undefined}
-            message={desk.message}
-            index={desk.index}
-            avatarEmoji={desk.avatarEmoji}
+        <Suspense fallback={null}>
+          <Scene
+            agents={effectiveAgents}
+            walkers={walkers3D}
             environment={environment}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={onSelectNode}
+            onDoubleClickNode={onDoubleClickNode}
+            walkingAgentIndices={walkingAgentIndices}
           />
-        ))}
-      </svg>
+        </Suspense>
+      </Canvas>
+
       {nodes.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-sm text-muted-foreground">
-            No agents in this workflow. Add nodes to see the office view.
-          </p>
+          <p className="text-sm text-muted-foreground">No agents in this workflow. Add nodes to see the office view.</p>
         </div>
       )}
     </div>

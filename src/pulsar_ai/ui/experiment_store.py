@@ -44,7 +44,7 @@ class ExperimentStore:
 
     # ── Public API (signatures unchanged) ────────────────────────────
 
-    def create(self, name: str, config: dict, task: str = "sft") -> str:
+    def create(self, name: str, config: dict, task: str = "sft", user_id: str = "") -> str:
         """Create a new experiment entry.
 
         Args:
@@ -69,8 +69,8 @@ class ExperimentStore:
             INSERT INTO experiments
                 (id, name, status, task, model, dataset_id, config,
                  created_at, last_update_at, completed_at, final_loss,
-                 eval_results, artifacts)
-            VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, '{}')
+                 eval_results, artifacts, user_id)
+            VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, '{}', ?)
             """,
             (
                 exp_id,
@@ -81,6 +81,7 @@ class ExperimentStore:
                 json.dumps(config, ensure_ascii=False, default=str),
                 now_iso,
                 now_iso,
+                user_id,
             ),
         )
         self._db.commit()
@@ -249,57 +250,74 @@ class ExperimentStore:
         logger.warning("Reconciled %d stale running experiments", len(stale))
         return len(stale)
 
-    def get(self, exp_id: str) -> dict | None:
+    def get(self, exp_id: str, user_id: str | None = None) -> dict | None:
         """Get a single experiment by ID.
 
         Args:
             exp_id: Experiment ID.
+            user_id: Optional ownership check.
 
         Returns:
             Experiment dict or None.
         """
-        row = self._db.fetch_one("SELECT * FROM experiments WHERE id = ?", (exp_id,))
+        clauses = ["id = ?"]
+        params: list[str] = [exp_id]
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
+        where = " AND ".join(clauses)
+        row = self._db.fetch_one(f"SELECT * FROM experiments WHERE {where}", tuple(params))
         if row is None:
             return None
         return self._row_to_dict(row)
 
-    def list_all(self, status: str | None = None) -> list[dict]:
-        """List all experiments, optionally filtered by status.
+    def list_all(self, status: str | None = None, user_id: str | None = None) -> list[dict]:
+        """List all experiments, optionally filtered by status and/or user.
 
         Args:
             status: Optional status filter.
+            user_id: Optional user ownership filter.
 
         Returns:
             List of experiment dicts (newest first).
         """
         self.reconcile_stale_running()
 
+        clauses: list[str] = []
+        params: list[str] = []
         if status:
-            rows = self._db.fetch_all(
-                """
-                SELECT * FROM experiments
-                WHERE status = ?
-                ORDER BY created_at DESC
-                """,
-                (status,),
-            )
-        else:
-            rows = self._db.fetch_all("SELECT * FROM experiments ORDER BY created_at DESC")
+            clauses.append("status = ?")
+            params.append(status)
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
 
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        rows = self._db.fetch_all(
+            f"SELECT * FROM experiments{where} ORDER BY created_at DESC",
+            tuple(params),
+        )
         return [self._row_to_dict(r) for r in rows]
 
-    def delete(self, exp_id: str) -> bool:
+    def delete(self, exp_id: str, user_id: str | None = None) -> bool:
         """Delete an experiment.
 
         Metrics are cascade-deleted via FK constraint.
 
         Args:
             exp_id: Experiment ID.
+            user_id: Optional ownership check.
 
         Returns:
             True if deleted, False if not found.
         """
-        cursor = self._db.execute("DELETE FROM experiments WHERE id = ?", (exp_id,))
+        clauses = ["id = ?"]
+        params: list[str] = [exp_id]
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
+        where = " AND ".join(clauses)
+        cursor = self._db.execute(f"DELETE FROM experiments WHERE {where}", tuple(params))
         self._db.commit()
         return cursor.rowcount > 0
 

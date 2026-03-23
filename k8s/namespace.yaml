@@ -1,0 +1,9 @@
+# Namespace for Pulsar AI workloads.
+# All resources are scoped to this namespace for isolation.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/part-of: pulsar-ai

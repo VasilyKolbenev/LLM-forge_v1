@@ -2,9 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id
 from pulsar_ai.ui.experiment_store import ExperimentStore
 
 logger = logging.getLogger(__name__)
@@ -23,9 +24,10 @@ class ExportRequest(BaseModel):
 
 
 @router.post("/export")
-async def export_model(req: ExportRequest) -> dict:
+async def export_model(request: Request, req: ExportRequest) -> dict:
     """Export a trained model to production format (GGUF, merged, hub)."""
-    exp = _store.get(req.experiment_id)
+    uid = get_scoped_user_id(request)
+    exp = _store.get(req.experiment_id, user_id=uid)
     if not exp:
         raise HTTPException(
             status_code=404,

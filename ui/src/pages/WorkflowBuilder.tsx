@@ -228,7 +228,7 @@ export function WorkflowBuilder() {
       }
     })
     return { ...workflow, nodes: modifiedNodes }
-  }, [workflow, replay.isReplayMode, replay.nodeStatuses])
+  }, [workflow.nodes, replay.isReplayMode, replay.nodeStatuses])
 
   return (
     <div className="h-[calc(100vh-1rem)] flex flex-col -m-6">
@@ -247,27 +247,33 @@ export function WorkflowBuilder() {
       )}
       <div className="flex flex-1 min-h-0 relative">
         <NodePalette />
-        {showDag && (
-          <ReactFlowProvider>
-            <FlowCanvas
-              workflow={replayWorkflow}
-              onNodeDoubleClick={handleNodeDoubleClick}
-              customPersonas={workflow.customPersonas}
-            />
-          </ReactFlowProvider>
-        )}
-        {showOffice && (
-          <AgentOffice
-            nodes={workflow.nodes}
-            selectedNodeId={workflow.selectedNode?.id ?? null}
-            onSelectNode={handleOfficeSelectNode}
-            onDoubleClickNode={handleNodeDoubleClick}
-            customPersonas={workflow.customPersonas}
-            environment={workflow.officeEnvironment}
-            onEnvironmentChange={workflow.setOfficeEnvironment}
-            replayNodeStatuses={replay.isReplayMode ? replay.nodeStatuses : undefined}
-          />
-        )}
+        <div className={`flex flex-1 min-h-0 ${viewMode === "split" ? "gap-1" : ""}`}>
+          {showDag && (
+            <div className={`${viewMode === "split" ? "w-1/2" : "flex-1"} min-h-0 relative`}>
+              <ReactFlowProvider>
+                <FlowCanvas
+                  workflow={replayWorkflow}
+                  onNodeDoubleClick={handleNodeDoubleClick}
+                  customPersonas={workflow.customPersonas}
+                />
+              </ReactFlowProvider>
+            </div>
+          )}
+          {showOffice && (
+            <div className={`${viewMode === "split" ? "w-1/2" : "flex-1"} min-h-0 relative`}>
+              <AgentOffice
+                nodes={workflow.nodes}
+                selectedNodeId={workflow.selectedNode?.id ?? null}
+                onSelectNode={handleOfficeSelectNode}
+                onDoubleClickNode={handleNodeDoubleClick}
+                customPersonas={workflow.customPersonas}
+                environment={workflow.officeEnvironment}
+                onEnvironmentChange={workflow.setOfficeEnvironment}
+                replayNodeStatuses={replay.isReplayMode ? replay.nodeStatuses : undefined}
+              />
+            </div>
+          )}
+        </div>
         {workflow.selectedNode && (
           <PropertiesPanel
             node={workflow.selectedNode}

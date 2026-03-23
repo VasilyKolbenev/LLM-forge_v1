@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useDropzone } from "react-dropzone"
 import { api } from "@/api/client"
-import { Upload, Trash2, Eye, Database } from "lucide-react"
+import { Upload, Trash2, Eye, Database, ImageIcon } from "lucide-react"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { Breadcrumbs } from "@/components/ui/Breadcrumbs"
 
@@ -14,6 +14,13 @@ export function Datasets() {
   } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const IMAGE_COLUMNS = new Set(["image", "image_path", "image_url", "img", "img_path", "photo"])
+
+  const isImageColumn = (col: string) => IMAGE_COLUMNS.has(col.toLowerCase())
+
+  const isMultimodal = (columns: string[] | undefined) =>
+    columns ? columns.some(isImageColumn) : false
 
   const load = () => {
     api.getDatasets().then(setDatasets).catch(() => {})
@@ -56,9 +63,13 @@ export function Datasets() {
   }
 
   const handleDelete = async (id: string) => {
-    await api.deleteDataset(id)
-    if (preview) setPreview(null)
-    load()
+    try {
+      await api.deleteDataset(id)
+      if (preview) setPreview(null)
+      load()
+    } catch {
+      // silently handle
+    }
   }
 
   return (
@@ -106,6 +117,7 @@ export function Datasets() {
             <thead>
               <tr className="bg-secondary/50">
                 <th className="text-left px-4 py-2 font-medium">Name</th>
+                <th className="text-left px-4 py-2 font-medium">Type</th>
                 <th className="text-left px-4 py-2 font-medium">Format</th>
                 <th className="text-left px-4 py-2 font-medium">Rows</th>
                 <th className="text-left px-4 py-2 font-medium">Size</th>
@@ -116,6 +128,18 @@ export function Datasets() {
               {datasets.map((d) => (
                 <tr key={String(d.id)} className="border-t border-border hover:bg-secondary/30">
                   <td className="px-4 py-2">{String(d.name)}</td>
+                  <td className="px-4 py-2">
+                    {isMultimodal(d.columns as string[] | undefined) ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-500/15 text-violet-400">
+                        <ImageIcon size={10} />
+                        Multimodal
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/15 text-blue-400">
+                        Text
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-muted-foreground">{String(d.format).toUpperCase()}</td>
                   <td className="px-4 py-2 font-mono">{String(d.num_rows)}</td>
                   <td className="px-4 py-2 text-muted-foreground">
@@ -146,7 +170,15 @@ export function Datasets() {
       {preview && (
         <div className="bg-card border border-border rounded-lg p-4 space-y-3">
           <div className="flex justify-between items-center">
-            <h3 className="font-semibold">Preview ({preview.total_rows} rows total)</h3>
+            <h3 className="font-semibold inline-flex items-center gap-2">
+              Preview ({preview.total_rows} rows total)
+              {isMultimodal(preview.columns) && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-violet-500/15 text-violet-400">
+                  <ImageIcon size={10} />
+                  Multimodal
+                </span>
+              )}
+            </h3>
             <button onClick={() => setPreview(null)} className="text-muted-foreground text-sm hover:text-foreground">
               Close
             </button>
@@ -156,7 +188,12 @@ export function Datasets() {
               <thead>
                 <tr className="bg-secondary/50">
                   {preview.columns.map((col) => (
-                    <th key={col} className="text-left px-3 py-1.5 font-medium">{col}</th>
+                    <th key={col} className="text-left px-3 py-1.5 font-medium">
+                      <span className="inline-flex items-center gap-1">
+                        {isImageColumn(col) && <ImageIcon size={10} className="text-violet-400" />}
+                        {col}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -165,7 +202,14 @@ export function Datasets() {
                   <tr key={i} className="border-t border-border">
                     {preview.columns.map((col) => (
                       <td key={col} className="px-3 py-1.5 max-w-48 truncate">
-                        {String(row[col] ?? "")}
+                        {isImageColumn(col) && row[col] ? (
+                          <span className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-300 font-mono">
+                            <ImageIcon size={12} className="shrink-0" />
+                            <span className="truncate max-w-36">{String(row[col])}</span>
+                          </span>
+                        ) : (
+                          String(row[col] ?? "")
+                        )}
                       </td>
                     ))}
                   </tr>

@@ -187,3 +187,128 @@ def compute_f1(
         "precision": round(precision_score(y_true, y_pred, average=average, zero_division=0), 4),
         "recall": round(recall_score(y_true, y_pred, average=average, zero_division=0), 4),
     }
+
+
+# ── Multimodal Metrics ──────────────────────────────────────────
+
+
+def compute_bleu(
+    predictions: list[str],
+    references: list[str],
+) -> dict:
+    """Compute BLEU score for captioning evaluation.
+
+    Args:
+        predictions: Generated captions.
+        references: Ground truth captions.
+
+    Returns:
+        Dict with bleu_1, bleu_4 scores, or empty dict if nltk unavailable.
+    """
+    try:
+        from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+    except ImportError:
+        logger.warning("nltk not installed, skipping BLEU computation")
+        return {}
+
+    smooth = SmoothingFunction().method1
+    bleu_1_scores = []
+    bleu_4_scores = []
+
+    for pred, ref in zip(predictions, references):
+        ref_tokens = ref.lower().split()
+        pred_tokens = pred.lower().split()
+        if not ref_tokens or not pred_tokens:
+            continue
+        bleu_1 = sentence_bleu([ref_tokens], pred_tokens, weights=(1, 0, 0, 0), smoothing_function=smooth)
+        bleu_4 = sentence_bleu([ref_tokens], pred_tokens, weights=(0.25, 0.25, 0.25, 0.25), smoothing_function=smooth)
+        bleu_1_scores.append(bleu_1)
+        bleu_4_scores.append(bleu_4)
+
+    if not bleu_1_scores:
+        return {}
+
+    return {
+        "bleu_1": round(sum(bleu_1_scores) / len(bleu_1_scores), 4),
+        "bleu_4": round(sum(bleu_4_scores) / len(bleu_4_scores), 4),
+    }
+
+
+def compute_rouge(
+    predictions: list[str],
+    references: list[str],
+) -> dict:
+    """Compute ROUGE-L score for captioning evaluation.
+
+    Args:
+        predictions: Generated texts.
+        references: Ground truth texts.
+
+    Returns:
+        Dict with rouge_l score, or empty dict if rouge-score unavailable.
+    """
+    try:
+        from rouge_score import rouge_scorer
+    except ImportError:
+        logger.warning("rouge-score not installed, skipping ROUGE computation")
+        return {}
+
+    scorer = rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
+    scores = []
+
+    for pred, ref in zip(predictions, references):
+        if not pred.strip() or not ref.strip():
+            continue
+        result = scorer.score(ref, pred)
+        scores.append(result["rougeL"].fmeasure)
+
+    if not scores:
+        return {}
+
+    return {"rouge_l": round(sum(scores) / len(scores), 4)}
+
+
+def compute_vqa_accuracy(
+    predictions: list[str],
+    references: list[str],
+) -> dict:
+    """Compute VQA accuracy (exact match + normalized match).
+
+    Args:
+        predictions: Generated answers.
+        references: Ground truth answers.
+
+    Returns:
+        Dict with exact_match and normalized_match rates.
+    """
+    import re
+
+    exact = 0
+    normalized = 0
+    total = 0
+
+    for pred, ref in zip(predictions, references):
+        if not pred or not ref:
+            continue
+        total += 1
+
+        pred_clean = pred.strip()
+        ref_clean = ref.strip()
+
+        if pred_clean == ref_clean:
+            exact += 1
+
+        # Normalized: lowercase, strip punctuation
+        pred_norm = re.sub(r"[^\w\s]", "", pred_clean.lower()).strip()
+        ref_norm = re.sub(r"[^\w\s]", "", ref_clean.lower()).strip()
+        if pred_norm == ref_norm:
+            normalized += 1
+
+    if total == 0:
+        return {}
+
+    return {
+        "exact_match": round(exact / total, 4),
+        "normalized_match": round(normalized / total, 4),
+        "total_evaluated": total,
+    }

@@ -25,6 +25,7 @@ class SessionStore:
         session_id: str,
         session_type: str = "assistant",
         ttl_hours: int = 24,
+        user_id: str = "",
     ) -> dict[str, Any]:
         """Return existing session or create a new one.
 
@@ -32,6 +33,7 @@ class SessionStore:
             session_id: Unique session identifier.
             session_type: 'assistant' or 'site_chat'.
             ttl_hours: Time-to-live in hours.
+            user_id: Owner user ID.
 
         Returns:
             Session dict with id, session_type, messages, created_at, updated_at.
@@ -42,9 +44,10 @@ class SessionStore:
 
         now = datetime.now().isoformat()
         self._db.execute(
-            "INSERT INTO assistant_sessions (id, session_type, messages, created_at, updated_at, ttl_hours) "
-            "VALUES (?, ?, '[]', ?, ?, ?)",
-            (session_id, session_type, now, now, ttl_hours),
+            "INSERT INTO assistant_sessions "
+            "(id, session_type, messages, created_at, updated_at, ttl_hours, user_id) "
+            "VALUES (?, ?, '[]', ?, ?, ?, ?)",
+            (session_id, session_type, now, now, ttl_hours, user_id),
         )
         self._db.commit()
         return {
@@ -56,16 +59,22 @@ class SessionStore:
             "ttl_hours": ttl_hours,
         }
 
-    def get(self, session_id: str) -> dict[str, Any] | None:
+    def get(self, session_id: str, user_id: str | None = None) -> dict[str, Any] | None:
         """Get a session by ID.
 
         Args:
             session_id: Session identifier.
+            user_id: Optional user filter.
 
         Returns:
             Session dict or None.
         """
-        row = self._db.fetch_one("SELECT * FROM assistant_sessions WHERE id = ?", (session_id,))
+        sql = "SELECT * FROM assistant_sessions WHERE id = ?"
+        params: list[Any] = [session_id]
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        row = self._db.fetch_one(sql, tuple(params))
         return self._row_to_dict(row) if row else None
 
     def get_messages(self, session_id: str) -> list[dict[str, str]]:
@@ -120,36 +129,54 @@ class SessionStore:
         )
         self._db.commit()
 
-    def delete(self, session_id: str) -> bool:
+    def delete(self, session_id: str, user_id: str | None = None) -> bool:
         """Delete a session.
 
         Args:
             session_id: Session identifier.
+            user_id: Optional user filter.
 
         Returns:
             True if deleted, False if not found.
         """
-        self._db.execute("DELETE FROM assistant_sessions WHERE id = ?", (session_id,))
+        sql = "DELETE FROM assistant_sessions WHERE id = ?"
+        params: list[Any] = [session_id]
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        self._db.execute(sql, tuple(params))
         self._db.commit()
         return self._db.execute("SELECT changes()").fetchone()[0] > 0
 
-    def list_sessions(self, session_type: str | None = None) -> list[dict[str, Any]]:
-        """List sessions, optionally filtered by type.
+    def list_sessions(
+        self,
+        session_type: str | None = None,
+        user_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """List sessions, optionally filtered by type and user.
 
         Args:
             session_type: Filter by session type.
+            user_id: Optional user filter.
 
         Returns:
             List of session dicts (newest first).
         """
+        clauses: list[str] = []
+        params: list[Any] = []
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
         if session_type:
-            rows = self._db.fetch_all(
-                "SELECT * FROM assistant_sessions WHERE session_type = ? "
-                "ORDER BY updated_at DESC",
-                (session_type,),
-            )
-        else:
-            rows = self._db.fetch_all("SELECT * FROM assistant_sessions ORDER BY updated_at DESC")
+            clauses.append("session_type = ?")
+            params.append(session_type)
+
+        sql = "SELECT * FROM assistant_sessions"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY updated_at DESC"
+
+        rows = self._db.fetch_all(sql, tuple(params))
         return [self._row_to_dict(r) for r in rows]
 
     def cleanup_expired(self) -> int:

@@ -2,9 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id
 from pulsar_ai.ui.experiment_store import ExperimentStore
 
 logger = logging.getLogger(__name__)
@@ -20,16 +21,18 @@ class CompareRequest(BaseModel):
 
 
 @router.get("/experiments")
-async def list_experiments(status: str | None = None) -> list[dict]:
+async def list_experiments(request: Request, status: str | None = None) -> list[dict]:
     """List all experiments, optionally filtered by status."""
-    return _store.list_all(status=status)
+    uid = get_scoped_user_id(request)
+    return _store.list_all(status=status, user_id=uid)
 
 
 @router.get("/experiments/{exp_id}")
-async def get_experiment(exp_id: str) -> dict:
+async def get_experiment(request: Request, exp_id: str) -> dict:
     """Get a single experiment with full details."""
     _store.reconcile_stale_running()
-    exp = _store.get(exp_id)
+    uid = get_scoped_user_id(request)
+    exp = _store.get(exp_id, user_id=uid)
     if not exp:
         raise HTTPException(status_code=404, detail=f"Experiment {exp_id} not found")
     return exp
@@ -66,9 +69,10 @@ async def compare_experiments(req: CompareRequest) -> dict:
 
 
 @router.delete("/experiments/{exp_id}")
-async def delete_experiment(exp_id: str) -> dict:
+async def delete_experiment(request: Request, exp_id: str) -> dict:
     """Delete an experiment record."""
-    deleted = _store.delete(exp_id)
+    uid = get_scoped_user_id(request)
+    deleted = _store.delete(exp_id, user_id=uid)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Experiment {exp_id} not found")
     return {"id": exp_id, "deleted": True}

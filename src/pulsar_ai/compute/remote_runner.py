@@ -335,3 +335,208 @@ class RemoteJobRunner:
         if self._conn:
             self._conn.close()
             self._conn = None
+
+
+@dataclass
+class DistributedJobStatus:
+    """Status of a multi-node distributed training job."""
+
+    job_id: str
+    status: str  # running/completed/failed
+    nodes: list[RemoteJobStatus]
+    started_at: str = ""
+
+
+class MultiNodeRunner:
+    """Coordinates distributed training across multiple SSH targets.
+
+    Syncs config/data to all nodes, launches torchrun with appropriate
+    --nnodes, --node_rank, --master_addr on each node, and tracks PIDs.
+
+    Args:
+        targets: List of ComputeTarget instances. First is master.
+        master_port: Port for distributed rendezvous.
+    """
+
+    REMOTE_WORK_DIR = "~/pulsar-ai-jobs"
+
+    def __init__(
+        self,
+        targets: list[ComputeTarget],
+        master_port: int = 29500,
+    ) -> None:
+        if not targets:
+            raise ValueError("At least one target is required")
+        self.targets = targets
+        self.master_port = master_port
+        self._runners = [RemoteJobRunner(t) for t in targets]
+
+    @property
+    def master_target(self) -> ComputeTarget:
+        """The first target is the master node."""
+        return self.targets[0]
+
+    def submit_distributed_job(
+        self,
+        config: dict,
+        task: str = "sft",
+    ) -> str:
+        """Submit a multi-node distributed training job.
+
+        Syncs config to all nodes and launches torchrun on each.
+
+        Args:
+            config: Training configuration dict.
+            task: Training task type.
+
+        Returns:
+            Job ID string.
+        """
+        if not _SAFE_TASK_RE.match(task):
+            raise ValueError(f"Invalid task name: {task!r}")
+
+        job_id = str(uuid.uuid4())[:8]
+        nnodes = len(self.targets)
+        master_addr = self.master_target.host
+
+        logger.info(
+            "Submitting distributed job %s: %d nodes, master=%s:%d",
+            job_id, nnodes, master_addr, self.master_port,
+        )
+
+        # Sync config to all nodes
+        for i, runner in enumerate(self._runners):
+            conn = runner._get_connection()
+            remote_job_dir = f"{self.REMOTE_WORK_DIR}/{job_id}"
+            conn.exec_command(f"mkdir -p {shlex.quote(remote_job_dir)}")
+
+            # Inject distributed settings into config
+            node_config = dict(config)
+            node_config["_distributed"] = {
+                "num_machines": nnodes,
+                "gpus_per_node": runner.target.gpu_count or 1,
+                "master_addr": master_addr,
+                "master_port": self.master_port,
+                "node_rank": i,
+            }
+            runner._write_remote_json(conn, node_config, f"{remote_job_dir}/config.json")
+
+        # Launch on all nodes
+        for i, runner in enumerate(self._runners):
+            nproc = runner.target.gpu_count or 1
+            self._launch_on_node(
+                runner, job_id, task,
+                node_rank=i, nnodes=nnodes,
+                nproc_per_node=nproc,
+                master_addr=master_addr,
+            )
+
+        return job_id
+
+    def _launch_on_node(
+        self,
+        runner: RemoteJobRunner,
+        job_id: str,
+        task: str,
+        node_rank: int,
+        nnodes: int,
+        nproc_per_node: int,
+        master_addr: str,
+    ) -> None:
+        """Launch training on a single node."""
+        conn = runner._get_connection()
+        q_dir = shlex.quote(f"{self.REMOTE_WORK_DIR}/{job_id}")
+        q_task = shlex.quote(task)
+
+        train_cmd = (
+            f"cd {q_dir} && "
+            f"torchrun "
+            f"--nnodes={int(nnodes)} "
+            f"--nproc_per_node={int(nproc_per_node)} "
+            f"--node_rank={int(node_rank)} "
+            f"--master_addr={shlex.quote(master_addr)} "
+            f"--master_port={int(self.master_port)} "
+            f"-m pulsar_ai.training._distributed_entry "
+            f"--config config.json"
+        )
+
+        q_log = shlex.quote(f"{self.REMOTE_WORK_DIR}/{job_id}/output_rank{node_rank}.log")
+        launch_cmd = (
+            f"nohup bash -c {shlex.quote(train_cmd)} "
+            f"> {q_log} 2>&1 & echo $!"
+        )
+
+        stdout, _, _ = conn.exec_command(launch_cmd)
+        pid = stdout.strip()
+
+        # Save job metadata per node
+        meta = {
+            "job_id": job_id,
+            "target_id": runner.target.id,
+            "node_rank": node_rank,
+            "pid": pid,
+            "task": task,
+            "status": "running",
+            "started_at": datetime.now().isoformat(),
+        }
+        runner._write_remote_json(
+            conn, meta,
+            f"{self.REMOTE_WORK_DIR}/{job_id}/job_meta_rank{node_rank}.json",
+        )
+
+        logger.info(
+            "Launched rank %d on %s (PID: %s, GPUs: %d)",
+            node_rank, runner.target.host, pid, nproc_per_node,
+        )
+
+    def get_status(self, job_id: str) -> DistributedJobStatus:
+        """Get combined status of all nodes for a distributed job."""
+        node_statuses = []
+        for i, runner in enumerate(self._runners):
+            try:
+                status = runner.get_status(job_id)
+                node_statuses.append(status)
+            except Exception as exc:
+                node_statuses.append(
+                    RemoteJobStatus(
+                        job_id=job_id,
+                        target_id=runner.target.id,
+                        status="unknown",
+                        started_at="",
+                        log_tail=[f"Error checking status: {exc}"],
+                    )
+                )
+
+        # Overall status: running if any running, failed if any failed, else completed
+        statuses = {s.status for s in node_statuses}
+        if "running" in statuses:
+            overall = "running"
+        elif "failed" in statuses:
+            overall = "failed"
+        elif "unknown" in statuses:
+            overall = "unknown"
+        else:
+            overall = "completed"
+
+        return DistributedJobStatus(
+            job_id=job_id,
+            status=overall,
+            nodes=node_statuses,
+            started_at=node_statuses[0].started_at if node_statuses else "",
+        )
+
+    def cancel(self, job_id: str) -> bool:
+        """Cancel distributed job on all nodes."""
+        cancelled = False
+        for runner in self._runners:
+            try:
+                if runner.cancel_job(job_id):
+                    cancelled = True
+            except Exception as exc:
+                logger.warning("Failed to cancel on %s: %s", runner.target.host, exc)
+        return cancelled
+
+    def close(self) -> None:
+        """Close all SSH connections."""
+        for runner in self._runners:
+            runner.close()

@@ -1,4 +1,9 @@
-"""FSDP and DeepSpeed distributed training launcher."""
+"""FSDP and DeepSpeed distributed training launcher.
+
+Supports single-node multi-GPU and multi-node distributed training
+via accelerate. Generates appropriate configs for FSDP and DeepSpeed
+based on hardware and user settings.
+"""
 
 import logging
 import subprocess
@@ -13,6 +18,10 @@ logger = logging.getLogger(__name__)
 def launch_distributed(
     config: dict,
     script_path: Optional[str] = None,
+    num_machines: int = 1,
+    machine_rank: int = 0,
+    master_addr: str = "127.0.0.1",
+    master_port: int = 29500,
 ) -> dict:
     """Launch distributed training via accelerate.
 
@@ -21,6 +30,10 @@ def launch_distributed(
     Args:
         config: Full resolved config dict.
         script_path: Path to training script. If None, uses internal launcher.
+        num_machines: Number of machines in the cluster.
+        machine_rank: Rank of this machine (0 = master).
+        master_addr: IP address of the master node.
+        master_port: Port for rendezvous.
 
     Returns:
         Dict with training results.
@@ -28,10 +41,20 @@ def launch_distributed(
     strategy = config.get("_detected_strategy", config.get("strategy"))
     num_gpus = config.get("_hardware", {}).get("num_gpus", 1)
 
-    if strategy in ("fsdp_qlora", "fsdp_full"):
-        accel_config = _build_fsdp_config(config)
-    elif strategy == "deepspeed":
-        accel_config = _build_deepspeed_config(config)
+    if strategy in ("fsdp_qlora", "fsdp_full", "fsdp_lora"):
+        accel_config = _build_fsdp_config(
+            config, num_machines=num_machines,
+            machine_rank=machine_rank,
+            master_addr=master_addr,
+            master_port=master_port,
+        )
+    elif strategy in ("deepspeed", "deepspeed_zero2", "deepspeed_zero3"):
+        accel_config = _build_deepspeed_config(
+            config, num_machines=num_machines,
+            machine_rank=machine_rank,
+            master_addr=master_addr,
+            master_port=master_port,
+        )
     else:
         raise ValueError(
             f"Strategy '{strategy}' does not require distributed launcher. "
@@ -41,7 +64,6 @@ def launch_distributed(
     # Write accelerate config to temp file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False, prefix="accel_") as f:
         import yaml
-
         yaml.dump(accel_config, f)
         accel_config_path = f.name
 
@@ -50,7 +72,6 @@ def launch_distributed(
         mode="w", suffix=".yaml", delete=False, prefix="train_config_"
     ) as f:
         import yaml
-
         yaml.dump(config, f)
         train_config_path = f.name
 
@@ -65,32 +86,55 @@ def launch_distributed(
         accel_config_path,
         "--num_processes",
         str(num_gpus),
+        "--num_machines",
+        str(num_machines),
+        "--machine_rank",
+        str(machine_rank),
+        "--main_process_ip",
+        master_addr,
+        "--main_process_port",
+        str(master_port),
         script_path,
         "--config",
         train_config_path,
     ]
 
     logger.info(
-        "Launching distributed training: %d GPUs, strategy=%s",
-        num_gpus,
-        strategy,
+        "Launching distributed training: %d GPUs × %d nodes, strategy=%s, rank=%d",
+        num_gpus, num_machines, strategy, machine_rank,
     )
     logger.debug("Command: %s", " ".join(cmd))
 
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd)
 
     # Clean up temp files
     Path(accel_config_path).unlink(missing_ok=True)
     Path(train_config_path).unlink(missing_ok=True)
 
-    return {"status": "completed", "strategy": strategy, "num_gpus": num_gpus}
+    return {
+        "status": "completed" if result.returncode == 0 else "failed",
+        "exit_code": result.returncode,
+        "strategy": strategy,
+        "num_gpus": num_gpus,
+        "num_machines": num_machines,
+    }
 
 
-def _build_fsdp_config(config: dict) -> dict:
-    """Build accelerate FSDP config.
+def _build_fsdp_config(
+    config: dict,
+    num_machines: int = 1,
+    machine_rank: int = 0,
+    master_addr: str = "127.0.0.1",
+    master_port: int = 29500,
+) -> dict:
+    """Build accelerate FSDP config with multi-node support.
 
     Args:
         config: Full config dict with fsdp section.
+        num_machines: Number of machines.
+        machine_rank: Rank of this machine.
+        master_addr: Master node address.
+        master_port: Master node port.
 
     Returns:
         Accelerate config dict.
@@ -114,7 +158,10 @@ def _build_fsdp_config(config: dict) -> dict:
             "fsdp_use_orig_params": True,
         },
         "mixed_precision": ("bf16" if training_config.get("bf16", True) else "no"),
-        "num_machines": 1,
+        "num_machines": num_machines,
+        "machine_rank": machine_rank,
+        "main_process_ip": master_addr,
+        "main_process_port": master_port,
         "num_processes": config.get("_hardware", {}).get("num_gpus", 2),
         "main_training_function": "main",
     }
@@ -122,11 +169,21 @@ def _build_fsdp_config(config: dict) -> dict:
     return accel
 
 
-def _build_deepspeed_config(config: dict) -> dict:
-    """Build accelerate DeepSpeed config.
+def _build_deepspeed_config(
+    config: dict,
+    num_machines: int = 1,
+    machine_rank: int = 0,
+    master_addr: str = "127.0.0.1",
+    master_port: int = 29500,
+) -> dict:
+    """Build accelerate DeepSpeed config with multi-node support.
 
     Args:
         config: Full config dict with deepspeed section.
+        num_machines: Number of machines.
+        machine_rank: Rank of this machine.
+        master_addr: Master node address.
+        master_port: Master node port.
 
     Returns:
         Accelerate config dict.
@@ -160,7 +217,10 @@ def _build_deepspeed_config(config: dict) -> dict:
         "compute_environment": "LOCAL_MACHINE",
         "distributed_type": "DEEPSPEED",
         "deepspeed_config": zero_config,
-        "num_machines": 1,
+        "num_machines": num_machines,
+        "machine_rank": machine_rank,
+        "main_process_ip": master_addr,
+        "main_process_port": master_port,
         "num_processes": config.get("_hardware", {}).get("num_gpus", 2),
         "main_training_function": "main",
     }
@@ -215,4 +275,40 @@ def generate_deepspeed_config(
         }
         config["zero_optimization"]["stage3_gather_16bit_weights_on_model_save"] = True
 
+    return config
+
+
+def build_multi_node_config(
+    config: dict,
+    num_nodes: int,
+    gpus_per_node: int,
+    master_addr: str,
+    master_port: int = 29500,
+    node_rank: int = 0,
+) -> dict:
+    """Build a complete distributed config for multi-node training.
+
+    Convenience wrapper that merges distributed settings into the
+    training config for use by _distributed_entry.py or RemoteJobRunner.
+
+    Args:
+        config: Base training config.
+        num_nodes: Total number of machines.
+        gpus_per_node: GPUs per machine.
+        master_addr: Master node IP.
+        master_port: Master node port.
+        node_rank: This machine's rank.
+
+    Returns:
+        Config dict with distributed settings injected.
+    """
+    config = dict(config)
+    config["_distributed"] = {
+        "num_machines": num_nodes,
+        "gpus_per_node": gpus_per_node,
+        "master_addr": master_addr,
+        "master_port": master_port,
+        "node_rank": node_rank,
+    }
+    config.setdefault("_hardware", {})["num_gpus"] = gpus_per_node
     return config

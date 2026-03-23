@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Fragment } from "react"
 import {
   Activity,
   ChevronDown,
@@ -315,9 +315,8 @@ export function Traces() {
               </tr>
             )}
             {traces.map((t) => (
-              <>
+              <Fragment key={t.trace_id}>
                 <tr
-                  key={t.trace_id}
                   onClick={() => loadDetail(t.trace_id)}
                   className="border-b border-border hover:bg-secondary/50 cursor-pointer transition-colors"
                 >
@@ -372,7 +371,7 @@ export function Traces() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

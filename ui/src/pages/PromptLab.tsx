@@ -189,8 +189,10 @@ function PromptDetail({
   onBack: () => void
   onRefresh: () => void
 }) {
-  const latest = prompt.versions[prompt.versions.length - 1]
-  const [editText, setEditText] = useState(latest.system_prompt)
+  const latest = prompt.versions.length > 0
+    ? prompt.versions[prompt.versions.length - 1]
+    : null
+  const [editText, setEditText] = useState(latest?.system_prompt ?? "")
   const [testVars, setTestVars] = useState<Record<string, string>>({})
   const [testResult, setTestResult] = useState<string | null>(null)
   const [showDiff, setShowDiff] = useState(false)
@@ -200,27 +202,40 @@ function PromptDetail({
   const [saving, setSaving] = useState(false)
 
   const handleSaveVersion = async () => {
-    if (editText === latest.system_prompt) return
+    if (editText === (latest?.system_prompt ?? "")) return
     setSaving(true)
     try {
       await api.addPromptVersion(prompt.id, { system_prompt: editText })
       onRefresh()
+    } catch (err) {
+      console.error("Failed to save prompt version:", err)
     } finally {
       setSaving(false)
     }
   }
 
   const handleTest = async () => {
-    const resp = await api.testPrompt(prompt.id, { variables: testVars }) as {
-      rendered: string; variables_missing: string[]
+    try {
+      const resp = await api.testPrompt(prompt.id, { variables: testVars }) as {
+        rendered: string; variables_missing: string[]
+      }
+      setTestResult(resp.rendered)
+    } catch (err) {
+      console.error("Failed to test prompt:", err)
+      setTestResult(`Error: ${err instanceof Error ? err.message : "Test failed"}`)
     }
-    setTestResult(resp.rendered)
   }
 
   const handleDiff = async () => {
-    const d = await api.diffPromptVersions(prompt.id, diffV1, diffV2) as { diff: string }
-    setDiffText(d.diff)
-    setShowDiff(true)
+    try {
+      const d = await api.diffPromptVersions(prompt.id, diffV1, diffV2) as { diff: string }
+      setDiffText(d.diff)
+      setShowDiff(true)
+    } catch (err) {
+      console.error("Failed to diff prompt versions:", err)
+      setDiffText(`Error: ${err instanceof Error ? err.message : "Diff failed"}`)
+      setShowDiff(true)
+    }
   }
 
   return (
@@ -264,13 +279,13 @@ function PromptDetail({
             />
             <div className="flex items-center justify-between mt-2">
               <div className="text-[10px] text-muted-foreground">
-                Variables: {latest.variables.length > 0
+                Variables: {latest && latest.variables.length > 0
                   ? latest.variables.map((v) => `{{${v}}}`).join(", ")
                   : "none"}
               </div>
               <button
                 onClick={handleSaveVersion}
-                disabled={saving || editText === latest.system_prompt}
+                disabled={saving || editText === (latest?.system_prompt ?? "")}
                 className="flex items-center gap-1 px-2.5 py-1 text-xs rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
                 <Save size={12} />
@@ -292,7 +307,7 @@ function PromptDetail({
               </button>
             </div>
             <div className="space-y-2">
-              {latest.variables.map((v) => (
+              {(latest?.variables ?? []).map((v) => (
                 <div key={v} className="flex items-center gap-2">
                   <span className="text-[10px] font-mono text-muted-foreground w-20 shrink-0">
                     {`{{${v}}}`}
@@ -305,7 +320,7 @@ function PromptDetail({
                   />
                 </div>
               ))}
-              {latest.variables.length === 0 && (
+              {(!latest || latest.variables.length === 0) && (
                 <p className="text-[10px] text-muted-foreground">No variables to fill</p>
               )}
             </div>
@@ -392,7 +407,7 @@ function PromptDetail({
               <div>ID: {prompt.id}</div>
               <div>Created: {new Date(prompt.created_at).toLocaleString()}</div>
               <div>Updated: {new Date(prompt.updated_at).toLocaleString()}</div>
-              {latest.model && <div>Model: {latest.model}</div>}
+              {latest?.model && <div>Model: {latest.model}</div>}
             </div>
           </div>
         </div>
@@ -421,15 +436,23 @@ export function PromptLab() {
   const handleCreate = async (data: {
     name: string; system_prompt: string; description: string; tags: string[]
   }) => {
-    await api.createPrompt(data)
-    setShowCreate(false)
-    await loadPrompts()
+    try {
+      await api.createPrompt(data)
+      setShowCreate(false)
+      await loadPrompts()
+    } catch (err) {
+      console.error("Failed to create prompt:", err)
+    }
   }
 
   const handleDelete = async (id: string) => {
-    await api.deletePrompt(id)
-    if (selected?.id === id) setSelected(null)
-    await loadPrompts()
+    try {
+      await api.deletePrompt(id)
+      if (selected?.id === id) setSelected(null)
+      await loadPrompts()
+    } catch (err) {
+      console.error("Failed to delete prompt:", err)
+    }
   }
 
   const handleSelect = async (id: string) => {

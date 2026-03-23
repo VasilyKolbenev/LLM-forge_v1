@@ -33,6 +33,7 @@ class JobRegistry:
         job_type: str,
         config: dict[str, Any] | None = None,
         experiment_id: str | None = None,
+        user_id: str = "",
     ) -> dict:
         """Create a new job in 'queued' status.
 
@@ -40,6 +41,7 @@ class JobRegistry:
             job_type: Job type (sft, eval, pipeline, etc.).
             config: Job configuration dict.
             experiment_id: Optional linked experiment ID.
+            user_id: Owner user ID.
 
         Returns:
             Created job dict.
@@ -50,8 +52,8 @@ class JobRegistry:
         self._db.execute(
             """
             INSERT INTO jobs
-                (id, experiment_id, status, job_type, config, started_at)
-            VALUES (?, ?, 'queued', ?, ?, ?)
+                (id, experiment_id, status, job_type, config, started_at, user_id)
+            VALUES (?, ?, 'queued', ?, ?, ?, ?)
             """,
             (
                 job_id,
@@ -59,42 +61,60 @@ class JobRegistry:
                 job_type,
                 json.dumps(config or {}, ensure_ascii=False),
                 now_iso,
+                user_id,
             ),
         )
         self._db.commit()
         logger.info("Created job %s (type=%s)", job_id, job_type)
         return self.get(job_id)  # type: ignore[return-value]
 
-    def get(self, job_id: str) -> dict | None:
+    def get(self, job_id: str, user_id: str | None = None) -> dict | None:
         """Get a job by ID.
 
         Args:
             job_id: Job ID.
+            user_id: Optional user filter.
 
         Returns:
             Job dict or None.
         """
-        row = self._db.fetch_one("SELECT * FROM jobs WHERE id = ?", (job_id,))
+        sql = "SELECT * FROM jobs WHERE id = ?"
+        params: list[Any] = [job_id]
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        row = self._db.fetch_one(sql, tuple(params))
         if row is None:
             return None
         return self._row_to_dict(row)
 
-    def list_all(self, status: str | None = None) -> list[dict]:
-        """List all jobs, optionally filtered by status.
+    def list_all(
+        self, status: str | None = None, user_id: str | None = None,
+    ) -> list[dict]:
+        """List all jobs, optionally filtered by status and user.
 
         Args:
             status: Optional status filter.
+            user_id: Optional user filter.
 
         Returns:
             List of job dicts (newest first).
         """
+        clauses: list[str] = []
+        params: list[Any] = []
+        if user_id is not None:
+            clauses.append("user_id = ?")
+            params.append(user_id)
         if status:
-            rows = self._db.fetch_all(
-                "SELECT * FROM jobs WHERE status = ? ORDER BY started_at DESC",
-                (status,),
-            )
-        else:
-            rows = self._db.fetch_all("SELECT * FROM jobs ORDER BY started_at DESC")
+            clauses.append("status = ?")
+            params.append(status)
+
+        sql = "SELECT * FROM jobs"
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY started_at DESC"
+
+        rows = self._db.fetch_all(sql, tuple(params))
         return [self._row_to_dict(r) for r in rows]
 
     def update_status(
@@ -141,30 +161,41 @@ class JobRegistry:
         self._db.commit()
         return cursor.rowcount > 0
 
-    def delete(self, job_id: str) -> bool:
+    def delete(self, job_id: str, user_id: str | None = None) -> bool:
         """Delete a job.
 
         Args:
             job_id: Job ID.
+            user_id: Optional user filter.
 
         Returns:
             True if deleted, False if not found.
         """
-        cursor = self._db.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        sql = "DELETE FROM jobs WHERE id = ?"
+        params: list[Any] = [job_id]
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        cursor = self._db.execute(sql, tuple(params))
         self._db.commit()
         return cursor.rowcount > 0
 
-    def get_active_jobs(self) -> list[dict]:
+    def get_active_jobs(self, user_id: str | None = None) -> list[dict]:
         """Get all jobs that are queued or running.
+
+        Args:
+            user_id: Optional user filter.
 
         Returns:
             List of active job dicts.
         """
-        rows = self._db.fetch_all("""
-            SELECT * FROM jobs
-            WHERE status IN ('queued', 'running')
-            ORDER BY started_at
-            """)
+        sql = "SELECT * FROM jobs WHERE status IN ('queued', 'running')"
+        params: list[Any] = []
+        if user_id is not None:
+            sql += " AND user_id = ?"
+            params.append(user_id)
+        sql += " ORDER BY started_at"
+        rows = self._db.fetch_all(sql, tuple(params))
         return [self._row_to_dict(r) for r in rows]
 
     @staticmethod

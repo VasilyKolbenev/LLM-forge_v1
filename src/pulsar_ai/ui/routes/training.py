@@ -5,10 +5,11 @@ import logging
 import queue
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id, get_user_id
 from pulsar_ai.ui.jobs import submit_training_job, get_job, list_jobs, cancel_job
 from pulsar_ai.ui.progress import get_progress_queue
 from pulsar_ai.ui.experiment_store import ExperimentStore
@@ -36,15 +37,17 @@ class TrainingResponse(BaseModel):
 
 
 @router.post("/training/start", response_model=TrainingResponse)
-async def start_training(req: TrainingRequest) -> TrainingResponse:
+async def start_training(request: Request, req: TrainingRequest) -> TrainingResponse:
     """Start a new training job.
 
     Creates an experiment record and submits background training.
     """
+    uid = get_user_id(request)
     experiment_id = _store.create(
         name=req.name,
         config=req.config,
         task=req.task,
+        user_id=uid,
     )
 
     job_id = submit_training_job(
@@ -91,24 +94,27 @@ async def stream_progress(job_id: str) -> StreamingResponse:
 
 
 @router.get("/training/jobs")
-async def get_jobs() -> list[dict]:
+async def get_jobs(request: Request) -> list[dict]:
     """List all training jobs."""
-    return list_jobs()
+    uid = get_scoped_user_id(request)
+    return list_jobs(user_id=uid)
 
 
 @router.get("/training/jobs/{job_id}")
-async def get_job_detail(job_id: str) -> dict:
+async def get_job_detail(request: Request, job_id: str) -> dict:
     """Get a single job by ID."""
-    job = get_job(job_id)
+    uid = get_scoped_user_id(request)
+    job = get_job(job_id, user_id=uid)
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
     return job
 
 
 @router.delete("/training/jobs/{job_id}")
-async def delete_job(job_id: str) -> dict:
+async def delete_job(request: Request, job_id: str) -> dict:
     """Cancel a running training job."""
-    cancelled = cancel_job(job_id)
+    uid = get_scoped_user_id(request)
+    cancelled = cancel_job(job_id, user_id=uid)
     if not cancelled:
         raise HTTPException(
             status_code=400,

@@ -1,0 +1,126 @@
+# Deployment: Pulsar AI application server.
+# Runs the FastAPI backend with the built React frontend served as static files.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulsar-ai
+  namespace: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pulsar-ai
+      app.kubernetes.io/component: api
+  # Rolling update strategy: at most 1 pod unavailable during deploy.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pulsar-ai
+        app.kubernetes.io/component: api
+    spec:
+      # Security: run as non-root user.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: pulsar-ai
+          # Replace with your actual container registry image.
+          image: ghcr.io/your-org/pulsar-ai:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8888
+              protocol: TCP
+          # Inject non-secret config from ConfigMap.
+          envFrom:
+            - configMapRef:
+                name: pulsar-ai-config
+            - secretRef:
+                name: pulsar-ai-secrets
+          # Resource limits matching docker-compose.yml values.
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
+          # Startup probe: gives the app up to 5 minutes (30 * 10s) to start.
+          startupProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          # Liveness probe: restarts the pod if the app becomes unresponsive.
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Readiness probe: removes from service if not ready to accept traffic.
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Container-level security hardening.
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          # Writable volume for application data (SQLite fallback, temp files).
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            # /tmp must be writable for Python and uvicorn temp files.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: pulsar-ai-data
+        # emptyDir for /tmp — ephemeral, cleared on pod restart.
+        - name: tmp
+          emptyDir: {}
+      # Spread pods across nodes for high availability.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: pulsar-ai
+              app.kubernetes.io/component: api
+---
+# PersistentVolumeClaim for application data.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pulsar-ai-data
+  namespace: pulsar-ai
+  labels:
+    app.kubernetes.io/name: pulsar-ai
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

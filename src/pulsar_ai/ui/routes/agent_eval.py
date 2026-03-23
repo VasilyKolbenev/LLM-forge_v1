@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from pulsar_ai.evaluation.agent_eval import (
@@ -17,6 +17,7 @@ from pulsar_ai.evaluation.agent_eval import (
     load_suite_from_yaml,
 )
 from pulsar_ai.evaluation.agent_eval_store import AgentEvalStore
+from pulsar_ai.ui.auth import get_current_user, get_scoped_user_id, get_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class RunEvalRequest(BaseModel):
 
 @router.get("/agent-eval/reports")
 async def list_reports(
+    request: Request,
     model_name: str | None = None,
     limit: int = 20,
 ) -> dict[str, Any]:
@@ -49,7 +51,8 @@ async def list_reports(
     Returns:
         Dict with reports list.
     """
-    reports = _store.list_reports(model_name=model_name, limit=limit)
+    user_id = get_scoped_user_id(request)
+    reports = _store.list_reports(model_name=model_name, limit=limit, user_id=user_id)
     return {"reports": reports, "total": len(reports)}
 
 
@@ -73,7 +76,7 @@ async def get_report(report_id: str) -> dict[str, Any]:
 
 
 @router.post("/agent-eval/run")
-async def run_eval(body: RunEvalRequest) -> dict[str, Any]:
+async def run_eval(body: RunEvalRequest, request: Request) -> dict[str, Any]:
     """Run an eval suite.
 
     Loads suite from YAML, creates evaluator, runs suite,
@@ -109,9 +112,10 @@ async def run_eval(body: RunEvalRequest) -> dict[str, Any]:
             detail=f"Invalid scoring mode: {body.scoring}. Use 'judge', 'exact', or 'contains'.",
         )
 
+    user_id = get_user_id(request)
     evaluator = AgentEvaluator(body.agent_config)
     report = evaluator.run_suite(suite, scoring=body.scoring)
-    report_id = _store.save_report(report)
+    report_id = _store.save_report(report, user_id=user_id)
 
     logger.info(
         "Eval run complete: report=%s suite=%s success_rate=%.1f%%",
@@ -137,6 +141,7 @@ async def run_eval(body: RunEvalRequest) -> dict[str, Any]:
 async def compare_reports_endpoint(
     report_a: str,
     report_b: str,
+    request: Request,
 ) -> dict[str, Any]:
     """Compare two reports.
 
@@ -150,8 +155,9 @@ async def compare_reports_endpoint(
     Raises:
         HTTPException: 404 if either report not found.
     """
+    user_id = get_scoped_user_id(request)
     try:
-        comparison = _store.get_comparison(report_a, report_b)
+        comparison = _store.get_comparison(report_a, report_b, user_id=user_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return comparison

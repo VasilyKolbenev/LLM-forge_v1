@@ -1,0 +1,26 @@
+model:
+  name: Qwen/Qwen2-VL-2B-Instruct
+  family: qwen-vl
+  max_seq_length: 4096
+
+use_unsloth: false     # Unsloth does not support VL models
+load_in_4bit: true
+gradient_checkpointing: true
+
+vision:
+  enabled: true
+  freeze_vision_encoder: true
+
+lora:
+  r: 16
+  lora_alpha: 16
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  lora_dropout: 0
+  bias: none

@@ -188,3 +188,15 @@ class UserStore:
         )
         self._db.commit()
         return cursor.rowcount > 0
+
+    def record_login(self, user_id: str) -> None:
+        """Update last_login_at timestamp for a user.
+
+        Args:
+            user_id: User ID to update.
+        """
+        self._db.execute(
+            "UPDATE users SET last_login_at = ? WHERE id = ?",
+            (datetime.now().isoformat(), user_id),
+        )
+        self._db.commit()

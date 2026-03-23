@@ -231,3 +231,89 @@ def _try_parse_json(text: str) -> dict | None:
         except json.JSONDecodeError:
             pass
     return None
+
+
+def run_multimodal_evaluation(
+    config: dict,
+    model_path: str | None = None,
+) -> dict:
+    """Run evaluation on a multimodal model.
+
+    Loads model with processor, runs inference on image-text test data,
+    and computes captioning/VQA metrics.
+
+    Args:
+        config: Full config with dataset, model, and evaluation sections.
+        model_path: Path to model. Uses config if not provided.
+
+    Returns:
+        Dict with metrics (bleu, rouge, vqa_accuracy) and predictions.
+    """
+    from pulsar_ai.data.image_loader import load_image
+    from pulsar_ai.evaluation.metrics import compute_bleu, compute_rouge, compute_vqa_accuracy
+    from pulsar_ai.model_loader import load_multimodal_model
+
+    model_name = model_path or config.get("model", {}).get("name", "")
+    model, processor, tokenizer = load_multimodal_model(config, model_name)
+
+    # Load test data
+    from pulsar_ai.data.loader import load_multimodal_dataset_from_config
+    df = load_multimodal_dataset_from_config(config)
+
+    ds_config = config.get("dataset", {})
+    image_col = ds_config.get("image_column", "image")
+    text_col = ds_config.get("text_column", "text")
+    label_col = ds_config.get("label_column", "caption")
+    max_new_tokens = config.get("evaluation", {}).get("max_new_tokens", 256)
+
+    predictions = []
+    references = []
+
+    logger.info("Running multimodal evaluation on %d samples", len(df))
+
+    for idx, row in df.iterrows():
+        image_ref = str(row.get(image_col, "")).strip()
+        text_input = str(row.get(text_col, "Describe this image.")).strip()
+        reference = str(row.get(label_col, "")).strip()
+
+        try:
+            image = load_image(image_ref)
+
+            messages = [{"role": "user", "content": f"<image>\n{text_input}"}]
+            prompt = processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True,
+            )
+            inputs = processor(
+                text=prompt, images=image, return_tensors="pt",
+            ).to(model.device)
+
+            import torch
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs, max_new_tokens=max_new_tokens, do_sample=False,
+                )
+
+            generated = processor.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+            predictions.append(generated.strip())
+            references.append(reference)
+
+        except Exception as exc:
+            logger.warning("Eval failed for row %d: %s", idx, exc)
+            predictions.append("")
+            references.append(reference)
+
+    # Compute metrics
+    results = {}
+    if references:
+        bleu = compute_bleu(predictions, references)
+        rouge = compute_rouge(predictions, references)
+        vqa = compute_vqa_accuracy(predictions, references)
+        results.update(bleu)
+        results.update(rouge)
+        results.update(vqa)
+
+    results["num_evaluated"] = len(predictions)
+    results["num_valid"] = sum(1 for p in predictions if p)
+
+    logger.info("Multimodal evaluation complete: %s", results)
+    return {"metrics": results, "predictions": predictions[:20]}
