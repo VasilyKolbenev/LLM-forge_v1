@@ -1,0 +1,32 @@
+[
+  {
+    "id": 1,
+    "problem": "A company's revenue grew from $2.4M to $3.6M in one year. What is the percentage growth rate?",
+    "expected_answer": "50%",
+    "difficulty": "easy"
+  },
+  {
+    "id": 2,
+    "problem": "If a model processes 1,250 tokens/second and a batch of 500 prompts averages 200 tokens each, how many seconds will the batch take?",
+    "expected_answer": "80 seconds",
+    "difficulty": "medium"
+  },
+  {
+    "id": 3,
+    "problem": "A GPU cluster has 8 nodes, each with 4 A100 GPUs (80GB each). Training uses FSDP across all GPUs. If the model is 70B parameters (4 bytes each in fp32), what percentage of total GPU memory does just the model weights occupy?",
+    "expected_answer": "About 10.9% (280GB out of 2560GB total)",
+    "difficulty": "hard"
+  },
+  {
+    "id": 4,
+    "problem": "An agent has a 95% success rate per task. If it runs 20 independent tasks, what is the probability that ALL tasks succeed? Round to 2 decimal places.",
+    "expected_answer": "0.36 or 36% (0.95^20 = 0.3585)",
+    "difficulty": "medium"
+  },
+  {
+    "id": 5,
+    "problem": "Training costs $2.50/GPU-hour. Fine-tuning takes 4 hours on 2 GPUs. If you run 3 experiments with different hyperparameters, what is the total cost?",
+    "expected_answer": "$60 (3 * 4 * 2 * $2.50)",
+    "difficulty": "easy"
+  }
+]

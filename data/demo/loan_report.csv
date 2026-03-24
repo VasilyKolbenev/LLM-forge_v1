@@ -1,0 +1,21 @@
+id,applicant_name,loan_type,amount,credit_score,income,debt_ratio,employment_years,status,risk_level
+1,Alice Johnson,mortgage,350000,780,95000,0.28,12,approved,low
+2,Bob Smith,personal,15000,620,45000,0.42,3,rejected,high
+3,Carol Davis,auto,28000,710,62000,0.31,7,approved,medium
+4,David Wilson,mortgage,520000,695,110000,0.38,5,pending,medium
+5,Emma Brown,business,75000,740,88000,0.25,15,approved,low
+6,Frank Miller,personal,8000,580,32000,0.55,1,rejected,high
+7,Grace Lee,auto,35000,725,71000,0.29,9,approved,low
+8,Henry Zhang,mortgage,410000,660,85000,0.44,4,pending,high
+9,Iris Patel,business,120000,790,145000,0.18,20,approved,low
+10,Jack Thompson,personal,22000,640,48000,0.47,2,rejected,high
+11,Karen White,auto,19000,700,55000,0.33,6,approved,medium
+12,Leo Martinez,mortgage,290000,755,78000,0.26,11,approved,low
+13,Maya Robinson,business,50000,680,65000,0.40,3,pending,medium
+14,Nathan Clark,personal,12000,610,38000,0.51,1,rejected,high
+15,Olivia Turner,auto,42000,730,82000,0.27,8,approved,low
+16,Peter Adams,mortgage,380000,705,92000,0.35,6,pending,medium
+17,Quinn Harris,business,95000,760,115000,0.22,14,approved,low
+18,Rachel King,personal,5000,550,28000,0.60,0,rejected,high
+19,Sam Cooper,auto,31000,690,59000,0.36,4,approved,medium
+20,Tina Brooks,mortgage,450000,720,105000,0.32,10,approved,medium

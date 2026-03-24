@@ -1,0 +1,1507 @@
+[
+  {
+    "id": "demo-wf1",
+    "name": "Customer Support Fine-Tuning",
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "dataSource",
+        "position": {
+          "x": 50,
+          "y": 200
+        },
+        "data": {
+          "label": "Support Tickets",
+          "config": {
+            "path": "data/support.jsonl",
+            "format": "jsonl",
+            "split": "train"
+          }
+        }
+      },
+      {
+        "id": "n2",
+        "type": "splitter",
+        "position": {
+          "x": 280,
+          "y": 200
+        },
+        "data": {
+          "label": "Train/Val Split",
+          "config": {
+            "train_ratio": 0.9,
+            "val_ratio": 0.1,
+            "strategy": "random"
+          }
+        }
+      },
+      {
+        "id": "n3",
+        "type": "model",
+        "position": {
+          "x": 280,
+          "y": 50
+        },
+        "data": {
+          "label": "Llama 3.2 1B",
+          "config": {
+            "model_id": "meta-llama/Llama-3.2-1B-Instruct",
+            "quantization": "4bit"
+          }
+        }
+      },
+      {
+        "id": "n4",
+        "type": "training",
+        "position": {
+          "x": 520,
+          "y": 120
+        },
+        "data": {
+          "label": "SFT Training",
+          "config": {
+            "task": "sft",
+            "lr": 0.0002,
+            "epochs": 3,
+            "batch_size": 4,
+            "lora_r": 16,
+            "lora_alpha": 32,
+            "optimizer": "adamw_8bit",
+            "bf16": true
+          }
+        }
+      },
+      {
+        "id": "n5",
+        "type": "eval",
+        "position": {
+          "x": 760,
+          "y": 120
+        },
+        "data": {
+          "label": "Evaluate",
+          "config": {
+            "batch_size": 8,
+            "max_tokens": 512
+          }
+        }
+      },
+      {
+        "id": "n6",
+        "type": "conditional",
+        "position": {
+          "x": 1000,
+          "y": 120
+        },
+        "data": {
+          "label": "Loss < 0.5?",
+          "config": {
+            "metric_name": "loss",
+            "operator": "<",
+            "threshold": 0.5
+          }
+        }
+      },
+      {
+        "id": "n7",
+        "type": "export",
+        "position": {
+          "x": 1240,
+          "y": 50
+        },
+        "data": {
+          "label": "Export GGUF",
+          "config": {
+            "format": "gguf",
+            "quantization": "q4_k_m"
+          }
+        }
+      },
+      {
+        "id": "n8",
+        "type": "serve",
+        "position": {
+          "x": 1240,
+          "y": 200
+        },
+        "data": {
+          "label": "Deploy vLLM",
+          "config": {
+            "engine": "vllm",
+            "port": 8000,
+            "api_format": "openai"
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "n1",
+        "target": "n2"
+      },
+      {
+        "id": "e2",
+        "source": "n2",
+        "target": "n4",
+        "sourceHandle": "train"
+      },
+      {
+        "id": "e3",
+        "source": "n3",
+        "target": "n4"
+      },
+      {
+        "id": "e4",
+        "source": "n4",
+        "target": "n5"
+      },
+      {
+        "id": "e5",
+        "source": "n5",
+        "target": "n6"
+      },
+      {
+        "id": "e6",
+        "source": "n6",
+        "target": "n7"
+      },
+      {
+        "id": "e7",
+        "source": "n7",
+        "target": "n8"
+      }
+    ],
+    "created_at": "2026-02-26T00:32:57.993283",
+    "updated_at": "2026-02-28T19:32:57.993291",
+    "last_run": "2026-02-28T19:32:57.993293",
+    "run_count": 4
+  },
+  {
+    "id": "demo-wf2",
+    "name": "RAG Agent with Data Flywheel",
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "dataSource",
+        "position": {
+          "x": 50,
+          "y": 100
+        },
+        "data": {
+          "label": "Knowledge Base",
+          "config": {
+            "path": "data/docs.jsonl",
+            "format": "jsonl"
+          }
+        }
+      },
+      {
+        "id": "n2",
+        "type": "model",
+        "position": {
+          "x": 50,
+          "y": 300
+        },
+        "data": {
+          "label": "Qwen 3B",
+          "config": {
+            "model_id": "Qwen/Qwen2.5-3B-Instruct",
+            "quantization": "4bit"
+          }
+        }
+      },
+      {
+        "id": "n3",
+        "type": "rag",
+        "position": {
+          "x": 300,
+          "y": 100
+        },
+        "data": {
+          "label": "RAG Index",
+          "config": {
+            "embedding_model": "BAAI/bge-small-en-v1.5",
+            "vector_store": "chroma",
+            "chunk_size": 512,
+            "top_k": 5
+          }
+        }
+      },
+      {
+        "id": "n4",
+        "type": "agent",
+        "position": {
+          "x": 550,
+          "y": 200
+        },
+        "data": {
+          "label": "Support Agent",
+          "config": {
+            "framework": "forge-react",
+            "tools": [
+              "search",
+              "calculator"
+            ],
+            "memory_type": "short_term",
+            "max_iterations": 10
+          }
+        }
+      },
+      {
+        "id": "n5",
+        "type": "dataGen",
+        "position": {
+          "x": 800,
+          "y": 200
+        },
+        "data": {
+          "label": "Generate SFT Data",
+          "config": {
+            "output_format": "sft",
+            "num_samples": 500,
+            "include_reasoning": true,
+            "filter_quality": true
+          }
+        }
+      },
+      {
+        "id": "n6",
+        "type": "training",
+        "position": {
+          "x": 1050,
+          "y": 200
+        },
+        "data": {
+          "label": "Fine-Tune on Traces",
+          "config": {
+            "task": "sft",
+            "lr": 0.0001,
+            "epochs": 2
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "n1",
+        "target": "n3"
+      },
+      {
+        "id": "e2",
+        "source": "n2",
+        "target": "n4"
+      },
+      {
+        "id": "e3",
+        "source": "n3",
+        "target": "n4"
+      },
+      {
+        "id": "e4",
+        "source": "n4",
+        "target": "n5"
+      },
+      {
+        "id": "e5",
+        "source": "n5",
+        "target": "n6"
+      },
+      {
+        "id": "e6",
+        "source": "n2",
+        "target": "n6"
+      }
+    ],
+    "created_at": "2026-02-28T00:32:57.993298",
+    "updated_at": "2026-02-28T23:32:57.993299",
+    "last_run": "2026-03-01T00:57:07.831740",
+    "run_count": 3
+  },
+  {
+    "id": "demo-wf3",
+    "name": "Multi-Agent Code Assistant",
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "model",
+        "position": {
+          "x": 50,
+          "y": 200
+        },
+        "data": {
+          "label": "Mistral 7B",
+          "config": {
+            "model_id": "mistralai/Mistral-7B-Instruct-v0.3",
+            "quantization": "8bit"
+          }
+        }
+      },
+      {
+        "id": "n2",
+        "type": "prompt",
+        "position": {
+          "x": 300,
+          "y": 50
+        },
+        "data": {
+          "label": "Router Prompt",
+          "config": {
+            "template": "Classify: {{input}}",
+            "variables": "input"
+          }
+        }
+      },
+      {
+        "id": "n3",
+        "type": "router",
+        "position": {
+          "x": 300,
+          "y": 200
+        },
+        "data": {
+          "label": "Task Router",
+          "config": {
+            "strategy": "llm_classifier",
+            "routes": [
+              "code,docs,debug"
+            ],
+            "fallback_route": "general"
+          }
+        }
+      },
+      {
+        "id": "n4",
+        "type": "agent",
+        "position": {
+          "x": 580,
+          "y": 80
+        },
+        "data": {
+          "label": "Code Writer",
+          "config": {
+            "framework": "langgraph",
+            "tools": [
+              "code_exec",
+              "file_read"
+            ],
+            "max_iterations": 15
+          }
+        }
+      },
+      {
+        "id": "n5",
+        "type": "agent",
+        "position": {
+          "x": 580,
+          "y": 220
+        },
+        "data": {
+          "label": "Doc Generator",
+          "config": {
+            "framework": "crewai",
+            "tools": [
+              "search",
+              "write"
+            ],
+            "max_iterations": 8
+          }
+        }
+      },
+      {
+        "id": "n6",
+        "type": "agent",
+        "position": {
+          "x": 580,
+          "y": 360
+        },
+        "data": {
+          "label": "Debugger",
+          "config": {
+            "framework": "forge-react",
+            "tools": [
+              "code_exec",
+              "trace",
+              "search"
+            ],
+            "max_iterations": 20
+          }
+        }
+      },
+      {
+        "id": "n7",
+        "type": "inference",
+        "position": {
+          "x": 850,
+          "y": 220
+        },
+        "data": {
+          "label": "Merge Results",
+          "config": {
+            "max_tokens": 1024,
+            "temperature": 0.3
+          }
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e1",
+        "source": "n1",
+        "target": "n3"
+      },
+      {
+        "id": "e2",
+        "source": "n2",
+        "target": "n3"
+      },
+      {
+        "id": "e3",
+        "source": "n3",
+        "target": "n4",
+        "sourceHandle": "route_a"
+      },
+      {
+        "id": "e4",
+        "source": "n3",
+        "target": "n5",
+        "sourceHandle": "route_b"
+      },
+      {
+        "id": "e5",
+        "source": "n3",
+        "target": "n6",
+        "sourceHandle": "fallback"
+      },
+      {
+        "id": "e6",
+        "source": "n4",
+        "target": "n7"
+      },
+      {
+        "id": "e7",
+        "source": "n5",
+        "target": "n7"
+      },
+      {
+        "id": "e8",
+        "source": "n6",
+        "target": "n7"
+      }
+    ],
+    "created_at": "2026-02-28T12:32:57.993307",
+    "updated_at": "2026-02-28T21:32:57.993308",
+    "last_run": null,
+    "run_count": 0
+  },
+  {
+    "id": "ae81fe99",
+    "name": "Banking AgentOffice Template",
+    "nodes": [
+      {
+        "id": "data_intake",
+        "type": "dataSource",
+        "position": {
+          "x": 80,
+          "y": 280
+        },
+        "data": {
+          "label": "Loan Applications",
+          "config": {
+            "path": "data/banking/loan_applications.csv",
+            "format": "csv"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_intake",
+        "type": "agent",
+        "position": {
+          "x": 320,
+          "y": 140
+        },
+        "data": {
+          "label": "Intake Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "intake",
+            "risk_level": "low",
+            "requires_approval": false
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_kyc",
+        "type": "agent",
+        "position": {
+          "x": 320,
+          "y": 310
+        },
+        "data": {
+          "label": "KYC AML Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "kyc_aml",
+            "risk_level": "high",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_risk",
+        "type": "agent",
+        "position": {
+          "x": 560,
+          "y": 225
+        },
+        "data": {
+          "label": "Risk Scoring Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "risk_scoring",
+            "risk_level": "high",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "router_decision",
+        "type": "router",
+        "position": {
+          "x": 810,
+          "y": 225
+        },
+        "data": {
+          "label": "Decision Router",
+          "config": {
+            "strategy": "llm_classifier",
+            "agent_role": "decision",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_decision",
+        "type": "agent",
+        "position": {
+          "x": 1050,
+          "y": 140
+        },
+        "data": {
+          "label": "Credit Decision Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "decision",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "a2a_compliance",
+        "type": "a2a",
+        "position": {
+          "x": 1050,
+          "y": 320
+        },
+        "data": {
+          "label": "Compliance Review",
+          "config": {
+            "protocol": "a2a",
+            "delegation_mode": "request_response",
+            "agent_role": "compliance",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "gateway_public",
+        "type": "gateway",
+        "position": {
+          "x": 1290,
+          "y": 225
+        },
+        "data": {
+          "label": "Bank API Gateway",
+          "config": {
+            "protocols": "REST,GraphQL",
+            "auth_method": "oauth2",
+            "rate_limit": 60,
+            "agent_role": "support",
+            "risk_level": "medium",
+            "requires_approval": false
+          },
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_data_intake",
+        "source": "data_intake",
+        "target": "agent_intake"
+      },
+      {
+        "id": "e_data_kyc",
+        "source": "data_intake",
+        "target": "agent_kyc"
+      },
+      {
+        "id": "e_intake_risk",
+        "source": "agent_intake",
+        "target": "agent_risk"
+      },
+      {
+        "id": "e_kyc_risk",
+        "source": "agent_kyc",
+        "target": "agent_risk"
+      },
+      {
+        "id": "e_risk_router",
+        "source": "agent_risk",
+        "target": "router_decision"
+      },
+      {
+        "id": "e_router_decision",
+        "source": "router_decision",
+        "target": "agent_decision"
+      },
+      {
+        "id": "e_router_compliance",
+        "source": "router_decision",
+        "target": "a2a_compliance"
+      },
+      {
+        "id": "e_decision_gateway",
+        "source": "agent_decision",
+        "target": "gateway_public"
+      },
+      {
+        "id": "e_compliance_gateway",
+        "source": "a2a_compliance",
+        "target": "gateway_public"
+      }
+    ],
+    "schema_version": 2,
+    "created_at": "2026-03-06T14:16:24.138876",
+    "updated_at": "2026-03-06T14:16:24.138876",
+    "last_run": "2026-03-06T14:16:30.271050",
+    "run_count": 1
+  },
+  {
+    "id": "0420fc2d",
+    "name": "Banking AgentOffice Template",
+    "nodes": [
+      {
+        "id": "data_intake",
+        "type": "dataSource",
+        "position": {
+          "x": 80,
+          "y": 280
+        },
+        "data": {
+          "label": "Loan Applications",
+          "config": {
+            "path": "data/banking/loan_applications.csv",
+            "format": "csv"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_intake",
+        "type": "agent",
+        "position": {
+          "x": 320,
+          "y": 140
+        },
+        "data": {
+          "label": "Intake Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "intake",
+            "risk_level": "low",
+            "requires_approval": false
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_kyc",
+        "type": "agent",
+        "position": {
+          "x": 320,
+          "y": 310
+        },
+        "data": {
+          "label": "KYC AML Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "kyc_aml",
+            "risk_level": "high",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_risk",
+        "type": "agent",
+        "position": {
+          "x": 560,
+          "y": 225
+        },
+        "data": {
+          "label": "Risk Scoring Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "risk_scoring",
+            "risk_level": "high",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "router_decision",
+        "type": "router",
+        "position": {
+          "x": 810,
+          "y": 225
+        },
+        "data": {
+          "label": "Decision Router",
+          "config": {
+            "strategy": "llm_classifier",
+            "agent_role": "decision",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_decision",
+        "type": "agent",
+        "position": {
+          "x": 1050,
+          "y": 140
+        },
+        "data": {
+          "label": "Credit Decision Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "decision",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "a2a_compliance",
+        "type": "a2a",
+        "position": {
+          "x": 1050,
+          "y": 320
+        },
+        "data": {
+          "label": "Compliance Review",
+          "config": {
+            "protocol": "a2a",
+            "delegation_mode": "request_response",
+            "agent_role": "compliance",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "gateway_public",
+        "type": "gateway",
+        "position": {
+          "x": 1290,
+          "y": 225
+        },
+        "data": {
+          "label": "Bank API Gateway",
+          "config": {
+            "protocols": "REST,GraphQL",
+            "auth_method": "oauth2",
+            "rate_limit": 60,
+            "agent_role": "support",
+            "risk_level": "medium",
+            "requires_approval": false
+          },
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_data_intake",
+        "source": "data_intake",
+        "target": "agent_intake"
+      },
+      {
+        "id": "e_data_kyc",
+        "source": "data_intake",
+        "target": "agent_kyc"
+      },
+      {
+        "id": "e_intake_risk",
+        "source": "agent_intake",
+        "target": "agent_risk"
+      },
+      {
+        "id": "e_kyc_risk",
+        "source": "agent_kyc",
+        "target": "agent_risk"
+      },
+      {
+        "id": "e_risk_router",
+        "source": "agent_risk",
+        "target": "router_decision"
+      },
+      {
+        "id": "e_router_decision",
+        "source": "router_decision",
+        "target": "agent_decision"
+      },
+      {
+        "id": "e_router_compliance",
+        "source": "router_decision",
+        "target": "a2a_compliance"
+      },
+      {
+        "id": "e_decision_gateway",
+        "source": "agent_decision",
+        "target": "gateway_public"
+      },
+      {
+        "id": "e_compliance_gateway",
+        "source": "a2a_compliance",
+        "target": "gateway_public"
+      }
+    ],
+    "schema_version": 2,
+    "created_at": "2026-03-06T14:30:10.108580",
+    "updated_at": "2026-03-06T14:30:10.108580",
+    "last_run": "2026-03-06T14:39:28.371130",
+    "run_count": 4
+  },
+  {
+    "id": "f0ce59f7",
+    "name": "Banking AgentOffice Template",
+    "nodes": [
+      {
+        "id": "data_intake",
+        "type": "dataSource",
+        "position": {
+          "x": 80,
+          "y": 280
+        },
+        "data": {
+          "label": "Loan Applications",
+          "config": {
+            "path": "data/banking/loan_applications.csv",
+            "format": "csv"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_intake",
+        "type": "agent",
+        "position": {
+          "x": 320,
+          "y": 140
+        },
+        "data": {
+          "label": "Intake Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "intake",
+            "risk_level": "low",
+            "requires_approval": false
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_kyc",
+        "type": "agent",
+        "position": {
+          "x": 320,
+          "y": 310
+        },
+        "data": {
+          "label": "KYC AML Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "kyc_aml",
+            "risk_level": "high",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_risk",
+        "type": "agent",
+        "position": {
+          "x": 560,
+          "y": 225
+        },
+        "data": {
+          "label": "Risk Scoring Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "risk_scoring",
+            "risk_level": "high",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "router_decision",
+        "type": "router",
+        "position": {
+          "x": 810,
+          "y": 225
+        },
+        "data": {
+          "label": "Decision Router",
+          "config": {
+            "strategy": "llm_classifier",
+            "agent_role": "decision",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_decision",
+        "type": "agent",
+        "position": {
+          "x": 1050,
+          "y": 140
+        },
+        "data": {
+          "label": "Credit Decision Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "decision",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "a2a_compliance",
+        "type": "a2a",
+        "position": {
+          "x": 1050,
+          "y": 320
+        },
+        "data": {
+          "label": "Compliance Review",
+          "config": {
+            "protocol": "a2a",
+            "delegation_mode": "request_response",
+            "agent_role": "compliance",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "gateway_public",
+        "type": "gateway",
+        "position": {
+          "x": 1290,
+          "y": 225
+        },
+        "data": {
+          "label": "Bank API Gateway",
+          "config": {
+            "protocols": "REST,GraphQL",
+            "auth_method": "oauth2",
+            "rate_limit": 60,
+            "agent_role": "support",
+            "risk_level": "medium",
+            "requires_approval": false
+          },
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_data_intake",
+        "source": "data_intake",
+        "target": "agent_intake"
+      },
+      {
+        "id": "e_data_kyc",
+        "source": "data_intake",
+        "target": "agent_kyc"
+      },
+      {
+        "id": "e_intake_risk",
+        "source": "agent_intake",
+        "target": "agent_risk"
+      },
+      {
+        "id": "e_kyc_risk",
+        "source": "agent_kyc",
+        "target": "agent_risk"
+      },
+      {
+        "id": "e_risk_router",
+        "source": "agent_risk",
+        "target": "router_decision"
+      },
+      {
+        "id": "e_router_decision",
+        "source": "router_decision",
+        "target": "agent_decision"
+      },
+      {
+        "id": "e_router_compliance",
+        "source": "router_decision",
+        "target": "a2a_compliance"
+      },
+      {
+        "id": "e_decision_gateway",
+        "source": "agent_decision",
+        "target": "gateway_public"
+      },
+      {
+        "id": "e_compliance_gateway",
+        "source": "a2a_compliance",
+        "target": "gateway_public"
+      }
+    ],
+    "schema_version": 2,
+    "created_at": "2026-03-06T14:41:23.704893",
+    "updated_at": "2026-03-06T14:41:23.704893",
+    "last_run": "2026-03-06T14:41:24.711651",
+    "run_count": 1
+  },
+  {
+    "id": "ba886de2",
+    "name": "[DEMO] Banking AgentOffice",
+    "nodes": [
+      {
+        "id": "data_intake",
+        "type": "dataSource",
+        "position": {
+          "x": 80,
+          "y": 280
+        },
+        "data": {
+          "label": "Loan Applications",
+          "config": {
+            "path": "data/banking/loan_applications.csv",
+            "format": "csv"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_intake",
+        "type": "agent",
+        "position": {
+          "x": 320,
+          "y": 140
+        },
+        "data": {
+          "label": "Intake Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "intake",
+            "risk_level": "low",
+            "requires_approval": false
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_kyc",
+        "type": "agent",
+        "position": {
+          "x": 320,
+          "y": 310
+        },
+        "data": {
+          "label": "KYC AML Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "kyc_aml",
+            "risk_level": "high",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_risk",
+        "type": "agent",
+        "position": {
+          "x": 560,
+          "y": 225
+        },
+        "data": {
+          "label": "Risk Scoring Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "risk_scoring",
+            "risk_level": "high",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "router_decision",
+        "type": "router",
+        "position": {
+          "x": 810,
+          "y": 225
+        },
+        "data": {
+          "label": "Decision Router",
+          "config": {
+            "strategy": "llm_classifier",
+            "agent_role": "decision",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "agent_decision",
+        "type": "agent",
+        "position": {
+          "x": 1050,
+          "y": 140
+        },
+        "data": {
+          "label": "Credit Decision Agent",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "decision",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "a2a_compliance",
+        "type": "a2a",
+        "position": {
+          "x": 1050,
+          "y": 320
+        },
+        "data": {
+          "label": "Compliance Review",
+          "config": {
+            "protocol": "a2a",
+            "delegation_mode": "request_response",
+            "agent_role": "compliance",
+            "risk_level": "critical",
+            "requires_approval": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "gateway_public",
+        "type": "gateway",
+        "position": {
+          "x": 1290,
+          "y": 225
+        },
+        "data": {
+          "label": "Bank API Gateway",
+          "config": {
+            "protocols": "REST,GraphQL",
+            "auth_method": "oauth2",
+            "rate_limit": 60,
+            "agent_role": "support",
+            "risk_level": "medium",
+            "requires_approval": false
+          },
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "e_data_intake",
+        "source": "data_intake",
+        "target": "agent_intake"
+      },
+      {
+        "id": "e_data_kyc",
+        "source": "data_intake",
+        "target": "agent_kyc"
+      },
+      {
+        "id": "e_intake_risk",
+        "source": "agent_intake",
+        "target": "agent_risk"
+      },
+      {
+        "id": "e_kyc_risk",
+        "source": "agent_kyc",
+        "target": "agent_risk"
+      },
+      {
+        "id": "e_risk_router",
+        "source": "agent_risk",
+        "target": "router_decision"
+      },
+      {
+        "id": "e_router_decision",
+        "source": "router_decision",
+        "target": "agent_decision"
+      },
+      {
+        "id": "e_router_compliance",
+        "source": "router_decision",
+        "target": "a2a_compliance"
+      },
+      {
+        "id": "e_decision_gateway",
+        "source": "agent_decision",
+        "target": "gateway_public"
+      },
+      {
+        "id": "e_compliance_gateway",
+        "source": "a2a_compliance",
+        "target": "gateway_public"
+      }
+    ],
+    "schema_version": 2,
+    "created_at": "2026-03-06T15:06:10.298591",
+    "updated_at": "2026-03-06T15:06:10.298591",
+    "last_run": null,
+    "run_count": 0
+  },
+  {
+    "id": "demo-wf-closed-loop",
+    "name": "Closed-Loop Agent Improvement",
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "dataSource",
+        "position": { "x": 50, "y": 200 },
+        "data": {
+          "label": "Production Logs",
+          "config": {
+            "path": "data/agent_logs.jsonl",
+            "format": "jsonl"
+          }
+        }
+      },
+      {
+        "id": "n2",
+        "type": "agent",
+        "position": { "x": 280, "y": 200 },
+        "data": {
+          "label": "Collect Traces",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "trace_collector",
+            "tools": ["read_file", "search_files"],
+            "max_iterations": 10
+          }
+        }
+      },
+      {
+        "id": "n3",
+        "type": "dataGen",
+        "position": { "x": 520, "y": 200 },
+        "data": {
+          "label": "Build SFT Dataset",
+          "config": {
+            "output_format": "sft",
+            "num_samples": 1000,
+            "include_reasoning": true,
+            "filter_quality": true
+          }
+        }
+      },
+      {
+        "id": "n4",
+        "type": "training",
+        "position": { "x": 760, "y": 200 },
+        "data": {
+          "label": "SFT Training",
+          "config": {
+            "task": "sft",
+            "lr": 2e-4,
+            "epochs": 3,
+            "batch_size": 4,
+            "lora_r": 16,
+            "lora_alpha": 32
+          }
+        }
+      },
+      {
+        "id": "n5",
+        "type": "eval",
+        "position": { "x": 1000, "y": 200 },
+        "data": {
+          "label": "Evaluate",
+          "config": {
+            "batch_size": 8,
+            "max_tokens": 512,
+            "metrics": ["accuracy", "f1", "latency"]
+          }
+        }
+      },
+      {
+        "id": "n6",
+        "type": "conditional",
+        "position": { "x": 1240, "y": 200 },
+        "data": {
+          "label": "Pass threshold?",
+          "config": {
+            "metric_name": "accuracy",
+            "operator": ">=",
+            "threshold": 0.85
+          }
+        }
+      },
+      {
+        "id": "n7",
+        "type": "export",
+        "position": { "x": 1480, "y": 200 },
+        "data": {
+          "label": "Export Model",
+          "config": {
+            "format": "gguf",
+            "quantization": "q4_k_m"
+          }
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "n1", "target": "n2" },
+      { "id": "e2", "source": "n2", "target": "n3" },
+      { "id": "e3", "source": "n3", "target": "n4" },
+      { "id": "e4", "source": "n4", "target": "n5" },
+      { "id": "e5", "source": "n5", "target": "n6" },
+      { "id": "e6", "source": "n6", "target": "n7" }
+    ],
+    "created_at": "2026-03-24T10:00:00.000000",
+    "updated_at": "2026-03-24T10:00:00.000000",
+    "last_run": null,
+    "run_count": 0
+  },
+  {
+    "id": "demo-wf-benchmark",
+    "name": "Model Benchmark Pipeline",
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "dataSource",
+        "position": { "x": 50, "y": 200 },
+        "data": {
+          "label": "Test Dataset",
+          "config": {
+            "path": "data/test.csv",
+            "format": "csv",
+            "split": "test"
+          }
+        }
+      },
+      {
+        "id": "n2",
+        "type": "eval",
+        "position": { "x": 300, "y": 120 },
+        "data": {
+          "label": "Eval: Base Model",
+          "config": {
+            "model_id": "Qwen/Qwen2.5-3B-Instruct",
+            "batch_size": 8,
+            "max_tokens": 512,
+            "metrics": ["accuracy", "latency", "perplexity"]
+          }
+        }
+      },
+      {
+        "id": "n3",
+        "type": "eval",
+        "position": { "x": 300, "y": 300 },
+        "data": {
+          "label": "Eval: Fine-Tuned",
+          "config": {
+            "model_id": "outputs/qwen-sft-v2/adapter",
+            "batch_size": 8,
+            "max_tokens": 512,
+            "metrics": ["accuracy", "latency", "perplexity"]
+          }
+        }
+      },
+      {
+        "id": "n4",
+        "type": "agent",
+        "position": { "x": 560, "y": 200 },
+        "data": {
+          "label": "LLM Judge",
+          "config": {
+            "framework": "forge-react",
+            "agent_role": "judge",
+            "tools": ["calculate", "read_file"],
+            "max_iterations": 5
+          }
+        }
+      },
+      {
+        "id": "n5",
+        "type": "export",
+        "position": { "x": 810, "y": 200 },
+        "data": {
+          "label": "Export Winner",
+          "config": {
+            "format": "report",
+            "output_path": "outputs/benchmark_results.json",
+            "include_comparison": true
+          }
+        }
+      }
+    ],
+    "edges": [
+      { "id": "e1", "source": "n1", "target": "n2" },
+      { "id": "e2", "source": "n1", "target": "n3" },
+      { "id": "e3", "source": "n2", "target": "n4" },
+      { "id": "e4", "source": "n3", "target": "n4" },
+      { "id": "e5", "source": "n4", "target": "n5" }
+    ],
+    "created_at": "2026-03-24T10:00:00.000000",
+    "updated_at": "2026-03-24T10:00:00.000000",
+    "last_run": null,
+    "run_count": 0
+  }
+]

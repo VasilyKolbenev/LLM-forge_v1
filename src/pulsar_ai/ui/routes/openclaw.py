@@ -318,3 +318,26 @@ def update_deployment_policy(
     )
     deployment = manager.get_deployment(deployment_id)
     return deployment.to_dict() if deployment else {"status": "updated"}
+
+
+# ── Ollama model routes ──────────────────────────────────────────
+
+
+@router.get("/models")
+async def list_available_models() -> dict[str, Any]:
+    """List models available in Ollama for agent sessions."""
+    from pulsar_ai.agent.ollama_helper import get_ollama_status
+
+    status = get_ollama_status()
+    return status
+
+
+@router.post("/models/pull")
+async def pull_model(request: Request) -> dict[str, Any]:
+    """Pull a model from Ollama registry."""
+    from pulsar_ai.agent.ollama_helper import ensure_ollama_model
+
+    body = await request.json()
+    model_name = body.get("model", "qwen3.5:4b")
+    success = ensure_ollama_model(model_name)
+    return {"success": success, "model": model_name}

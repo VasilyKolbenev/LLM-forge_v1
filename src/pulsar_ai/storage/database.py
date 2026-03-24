@@ -165,6 +165,11 @@ class Database:
     def _bootstrap(self) -> None:
         """Create tables if they don't exist and stamp the schema version."""
         conn = self._get_connection()
+
+        # Run migrations on existing tables before BOOTSTRAP_SQL
+        # (CREATE TABLE IF NOT EXISTS won't add new columns to existing tables)
+        self._migrate_add_columns(conn)
+
         conn.executescript(BOOTSTRAP_SQL)
 
         # Stamp schema version (idempotent).
@@ -178,6 +183,31 @@ class Database:
             self.db_path,
             SCHEMA_VERSION,
         )
+
+    def _migrate_add_columns(self, conn: sqlite3.Connection) -> None:
+        """Add missing columns to existing tables (idempotent ALTER TABLE)."""
+        migrations: list[tuple[str, str, str]] = [
+            # (table, column, definition)
+            ("experiments", "user_id", "TEXT DEFAULT ''"),
+            ("prompts", "user_id", "TEXT DEFAULT ''"),
+            ("workflows", "user_id", "TEXT DEFAULT ''"),
+            ("runs", "user_id", "TEXT DEFAULT ''"),
+            ("api_keys", "user_id", "TEXT DEFAULT ''"),
+            ("jobs", "user_id", "TEXT DEFAULT ''"),
+            ("assistant_sessions", "user_id", "TEXT DEFAULT ''"),
+            ("traces", "user_id", "TEXT DEFAULT ''"),
+            ("benchmarks", "user_id", "TEXT DEFAULT ''"),
+            ("agent_eval_reports", "user_id", "TEXT DEFAULT ''"),
+            ("users", "last_login_at", "TEXT DEFAULT ''"),
+        ]
+        for table, column, definition in migrations:
+            try:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                logger.info("Migration: added %s.%s", table, column)
+            except sqlite3.OperationalError:
+                # Column already exists or table doesn't exist yet — skip
+                pass
+        conn.commit()
 
     @property
     def schema_version(self) -> int:

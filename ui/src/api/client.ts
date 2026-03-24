@@ -1,4 +1,4 @@
-﻿const BASE = "/api/v1"
+const BASE = "/api/v1"
 
 // Benchmark types used by api methods and Benchmarks page
 export interface BenchmarkHardwareInfo {
@@ -272,6 +272,15 @@ export const api = {
     }),
   stopOpenClawDeployment: (id: string) =>
     request<Record<string, unknown>>(`/openclaw/deployments/${id}`, { method: "DELETE" }),
+  ollamaModels: () =>
+    request<{ connected: boolean; models: Array<{ name: string; size_gb: number; modified_at: string; family: string }>; error?: string }>(
+      "/openclaw/models",
+    ),
+  pullOllamaModel: (model: string) =>
+    request<{ success: boolean; model: string }>("/openclaw/models/pull", {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    }),
 
   // Benchmarks
   getBenchmarks: () =>

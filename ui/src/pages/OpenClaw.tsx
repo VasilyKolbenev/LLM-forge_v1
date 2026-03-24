@@ -78,6 +78,41 @@ interface AuditEvent {
   actor?: string
 }
 
+const AGENT_TEMPLATES = [
+  {
+    id: "code-reviewer",
+    name: "Code Reviewer",
+    model: "qwen3.5:4b",
+    tools: "read_file, search_files",
+    system_prompt: "You are an expert Python code reviewer. When given a file path, read it and provide a detailed review covering:\\n1. Bugs and logic errors\\n2. Security vulnerabilities\\n3. Resource leaks\\n4. Best practice violations\\n5. Performance issues\\nFor each issue, specify line number, severity, and suggested fix.",
+    demo_input: "Review data/demo/review_target.py for bugs and security issues",
+  },
+  {
+    id: "data-analyst",
+    name: "Data Analyst",
+    model: "qwen3.5:4b",
+    tools: "read_file, calculate",
+    system_prompt: "You are a data analyst. Read CSV files and provide:\\n1. Dataset overview\\n2. Key statistics\\n3. Risk analysis\\n4. Actionable insights\\nUse read_file to load data and calculate for computations.",
+    demo_input: "Analyze data/demo/loan_report.csv — approval rate, average amounts, risk patterns",
+  },
+  {
+    id: "doc-summarizer",
+    name: "Document Summarizer",
+    model: "qwen3.5:4b",
+    tools: "read_file",
+    system_prompt: "You are a technical document summarizer. Provide:\\n1. Executive summary (2-3 sentences)\\n2. Key points\\n3. Technical concepts explained\\n4. Practical implications",
+    demo_input: "Summarize data/demo/article.txt — focus on practical implications for ML teams",
+  },
+  {
+    id: "math-tutor",
+    name: "Math Tutor",
+    model: "qwen3.5:4b",
+    tools: "calculate, read_file",
+    system_prompt: "You are a math tutor for ML/AI. Break down problems step by step, use the calculate tool for each computation, and explain WHY each step is needed.",
+    demo_input: "Read data/demo/math_problems.json and solve problem #3 step by step",
+  },
+]
+
 export function OpenClaw() {
   const [tab, setTab] = useState<TabId>("sessions")
   const [health, setHealth] = useState<HealthStatus | null>(null)
@@ -95,6 +130,11 @@ export function OpenClaw() {
   // Modals
   const [showCreateSession, setShowCreateSession] = useState(false)
   const [showCreateDeployment, setShowCreateDeployment] = useState(false)
+
+  const [ollamaStatus, setOllamaStatus] = useState<{ connected: boolean; models: Array<{ name: string; size_gb: number }> } | null>(null)
+  const [sessionInput, setSessionInput] = useState<Record<string, string>>({})
+  const [sessionOutput, setSessionOutput] = useState<Record<string, string>>({})
+  const [runningSession, setRunningSession] = useState<string | null>(null)
 
   // Create session form
   const [sessionForm, setSessionForm] = useState({
@@ -168,6 +208,7 @@ export function OpenClaw() {
     fetchSessions()
     fetchDeployments()
     fetchGovernance()
+    api.ollamaModels().then(data => setOllamaStatus(data as any)).catch(() => setOllamaStatus({ connected: false, models: [] }))
   }, [fetchHealth, fetchSessions, fetchDeployments, fetchGovernance])
 
   useEffect(() => {
@@ -180,6 +221,24 @@ export function OpenClaw() {
       fetchSessions()
     } catch {
       /* ignore */
+    }
+  }
+
+  const handleRunWithInput = async (sessionId: string, input: string) => {
+    if (!input.trim()) return
+    setRunningSession(sessionId)
+    setSessionOutput(prev => ({ ...prev, [sessionId]: "Thinking..." }))
+    try {
+      const data = await api.runOpenClawSession(sessionId, input)
+      const result = data as Record<string, unknown>
+      const output = result.output || result.response || result.trace || JSON.stringify(result, null, 2)
+      setSessionOutput(prev => ({ ...prev, [sessionId]: String(output) }))
+      setSessionInput(prev => ({ ...prev, [sessionId]: "" }))
+      loadSessionTrace(sessionId)
+    } catch (e) {
+      setSessionOutput(prev => ({ ...prev, [sessionId]: `Error: ${e}` }))
+    } finally {
+      setRunningSession(null)
     }
   }
 
@@ -320,6 +379,11 @@ export function OpenClaw() {
       <div className="flex items-center gap-4">
         <HealthIndicator label="OpenClaw" healthy={isHealthy} detail={health?.version || health?.error || ""} />
         <HealthIndicator label="NemoClaw" healthy={isHealthy} detail="Sandbox runtime" />
+        <HealthIndicator
+          label="Ollama"
+          healthy={ollamaStatus?.connected ?? false}
+          detail={ollamaStatus?.connected ? `${ollamaStatus.models.length} models` : "Not connected"}
+        />
       </div>
 
       {/* Tabs */}
@@ -346,12 +410,29 @@ export function OpenClaw() {
       {/* Sessions tab */}
       {tab === "sessions" && (
         <div className="space-y-4">
-          <div className="flex justify-end">
+          <div className="flex items-center gap-2 flex-wrap">
+            {AGENT_TEMPLATES.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setSessionForm({
+                    name: t.id,
+                    model: t.model,
+                    tools: t.tools,
+                    system_prompt: t.system_prompt,
+                  })
+                  setShowCreateSession(true)
+                }}
+                className="px-2.5 py-1 text-xs rounded-md border border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 transition-colors"
+              >
+                {t.name}
+              </button>
+            ))}
             <button
               onClick={() => setShowCreateSession(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground"
             >
-              <Plus size={14} /> Create Session
+              <Plus size={14} /> Custom Session
             </button>
           </div>
 
@@ -440,6 +521,39 @@ export function OpenClaw() {
                             trace={expandedTrace}
                             onIngest={() => handleIngestTraces(s.session_id)}
                           />
+                        </td>
+                      </tr>
+                    )}
+                    {s.status === "running" && expandedId === s.session_id && (
+                      <tr className="bg-card/50">
+                        <td colSpan={7} className="px-4 py-3">
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <input
+                                value={sessionInput[s.session_id] || ""}
+                                onChange={(e) => setSessionInput(prev => ({ ...prev, [s.session_id]: e.target.value }))}
+                                placeholder="Send a message to the agent..."
+                                className="flex-1 px-3 py-2 text-sm rounded-md bg-background border border-border"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && sessionInput[s.session_id]) {
+                                    handleRunWithInput(s.session_id, sessionInput[s.session_id])
+                                  }
+                                }}
+                              />
+                              <button
+                                onClick={() => handleRunWithInput(s.session_id, sessionInput[s.session_id] || "")}
+                                disabled={!sessionInput[s.session_id] || runningSession === s.session_id}
+                                className="px-3 py-2 text-sm rounded-md bg-primary text-primary-foreground disabled:opacity-50"
+                              >
+                                {runningSession === s.session_id ? "Running..." : "Send"}
+                              </button>
+                            </div>
+                            {sessionOutput[s.session_id] && (
+                              <div className="mt-2 p-3 rounded-md bg-background border border-border text-sm whitespace-pre-wrap font-mono text-xs max-h-96 overflow-auto">
+                                {sessionOutput[s.session_id]}
+                              </div>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )}

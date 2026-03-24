@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react"
-import { api, AdminUser, SystemHealth } from "@/api/client"
+import { api } from "@/api/client"
+import type { AdminUser, SystemHealth } from "@/api/client"
 import { useAuth } from "@/lib/auth"
 import { useNavigate } from "react-router-dom"
 import {
