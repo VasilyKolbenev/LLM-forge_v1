@@ -114,9 +114,8 @@ def openclaw_health() -> dict[str, Any]:
 @router.get("/sessions")
 def list_sessions(request: Request, status: str | None = None) -> dict[str, Any]:
     """List all OpenClaw sessions."""
-    user_id = get_scoped_user_id(request)
     runtime = get_runtime()
-    sessions = runtime.list_sessions(status=status, user_id=user_id)
+    sessions = runtime.list_sessions(status=status)
     return {"sessions": [asdict(s) for s in sessions]}
 
 
@@ -170,7 +169,7 @@ def run_session(session_id: str, body: SessionRunRequest, request: Request) -> d
     # ClawFence: audit execution
     audit_session_event("run", session_id, details={"input_length": len(body.input)})
 
-    result = runtime.run(session_id, body.input, user_id=user_id)
+    result = runtime.run(session_id, body.input)
 
     # ClawFence: check token usage against policy
     tokens_used = result.get("tokens", 0)

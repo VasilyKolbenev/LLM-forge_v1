@@ -1,22 +1,5 @@
 [
   {
-    "id": "code-reviewer",
-    "name": "Code Reviewer",
-    "description": "Analyzes Python code for bugs, security issues, and best practice violations",
-    "model": "qwen3.5:4b",
-    "tools": [
-      "read_file",
-      "search_files"
-    ],
-    "system_prompt": "You are an expert Python code reviewer. When given a file path, read it and provide a detailed review covering:\n1. Bugs and logic errors\n2. Security vulnerabilities (hardcoded secrets, eval usage, etc.)\n3. Resource leaks (unclosed files, connections)\n4. Best practice violations (PEP 8, type hints, error handling)\n5. Performance issues\n\nFor each issue found, specify the line number, severity (Critical/High/Medium/Low), and a suggested fix. Use the read_file tool to read the code.",
-    "demo_input": "Review the file data/demo/review_target.py for bugs and security issues",
-    "tags": [
-      "code",
-      "security",
-      "review"
-    ]
-  },
-  {
     "id": "data-analyst",
     "name": "Data Analyst",
     "description": "Analyzes CSV datasets and computes statistics",

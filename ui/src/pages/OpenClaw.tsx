@@ -80,14 +80,6 @@ interface AuditEvent {
 
 const AGENT_TEMPLATES = [
   {
-    id: "code-reviewer",
-    name: "Code Reviewer",
-    model: "qwen3.5:4b",
-    tools: "read_file, search_files",
-    system_prompt: "You are an expert Python code reviewer. When given a file path, read it and provide a detailed review covering:\\n1. Bugs and logic errors\\n2. Security vulnerabilities\\n3. Resource leaks\\n4. Best practice violations\\n5. Performance issues\\nFor each issue, specify line number, severity, and suggested fix.",
-    demo_input: "Review data/demo/review_target.py for bugs and security issues",
-  },
-  {
     id: "data-analyst",
     name: "Data Analyst",
     model: "qwen3.5:4b",
@@ -283,10 +275,12 @@ export function OpenClaw() {
       await api.createOpenClawSession({
         name: sessionForm.name,
         model: sessionForm.model,
-        tools: sessionForm.tools
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean),
+        tools: Array.isArray(sessionForm.tools)
+          ? sessionForm.tools
+          : sessionForm.tools
+              .split(",")
+              .map((t: string) => t.trim())
+              .filter(Boolean),
         system_prompt: sessionForm.system_prompt,
       })
       setShowCreateSession(false)
